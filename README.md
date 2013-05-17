@@ -2,6 +2,26 @@
 
 A lightweight library to store JSON using PHP/MySQL.
 
+## Using the library
+
+You'll need to include `include/json-store.php`.
+
+You then just subclass `JsonStore`.  The rules are:
+
+*    The constructor takes an associative array representing the database row
+*	The subclass must implement the abstract method `mysqlConfig()`, which returns something like the following:
+```
+array(
+	"table" => {{table name}},
+	"columns" => array(...),
+	"keyColumn" => "integer/id"
+);
+```
+
+The "keyColumn" is optional - if it is present (and begins with "integer"), it is updated using the auto-increment value from the table.
+
+You can also return the property `"keyColumns"`, which provides a list of columns that uniquely identify the item (used when updating).
+
 ## Table structure
 
 The basic principle is that the values are stored as JSON text in the database.
