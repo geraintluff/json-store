@@ -8,8 +8,9 @@ You'll need to include `include/json-store.php`.
 
 You then just subclass `JsonStore`.  The rules are:
 
-*    The constructor takes an associative array representing the database row
+*	The constructor takes an associative array representing the database row (as returned by `$mysqli->fetch_assoc()` or `JsonStore::mysqlQuery()`)
 *	The subclass must implement the abstract method `mysqlConfig()`, which returns something like the following:
+
 ```
 array(
 	"table" => {{table name}},
