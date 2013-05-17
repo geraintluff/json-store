@@ -9,7 +9,7 @@
 */
 require_once(dirname(__FILE__).'/config.php');
 
-class StoredJson {
+abstract class StoredJson {
 	static private $mysqlConnection;
 	static protected $mysqlErrorMessage = FALSE;
 	static public function connectToDatabase($hostname, $username, $password, $database) {
@@ -86,11 +86,7 @@ class StoredJson {
 		}
 	}
 	
-	/*
-	abstract function mysqlConfig() {
-		return array("json");
-	}
-	*/
+	abstract protected function mysqlConfig();
 	
 	protected function merge($path, $value) {
 		$target =& $this;

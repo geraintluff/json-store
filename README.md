@@ -6,7 +6,7 @@ A lightweight library to store JSON using PHP/MySQL.
 
 The basic principle is that the values are stored as JSON text in the database.
 
-However, certain columns are made available as separate columns, so they can be indexed.  The column names all begin with the type they store: boolean/integer/number/string"json" for scalar types, or "json" to store raw JSON.
+However, certain columns are made available as separate columns, so they can be indexed.  The column names all begin with the type they store: boolean/integer/number/string for scalar types, or "json" to store raw JSON.
 
 The remaining part of the column name is a JSON Pointer to the part of the document being referenced.  So for instance, if you wanted to index an integer property called "id", then you would use a column called "integer/id".
 
