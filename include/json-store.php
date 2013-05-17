@@ -64,6 +64,7 @@ class StoredJson {
 		if (!$dbRow) {
 			return;
 		}
+		ksort($dbRow);
 		foreach ($dbRow as $column => $value) {
 			if (is_null($value)) {
 				continue;
