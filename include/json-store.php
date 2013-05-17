@@ -194,7 +194,7 @@ abstract class JsonStore {
 			if ($column[0] != "`") {
 				$column = "`".str_replace("`", "``", $column)."`";
 			}
-			$whereParts[] = "$column=".$this->mysqlValue($column);
+			$whereParts[] = "$column=".$sqlValue;
 		}
 		
 		$config = $this->mysqlConfig();
