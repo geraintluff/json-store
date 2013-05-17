@@ -28,22 +28,20 @@ class TestClass extends StoredJson {
 		return $result;
 	}
 	
+	protected function mysqlConfig() {
+		return array(
+			"table" => "json_store_test",
+			"columns" => array("json", "integer/id", "string/title"),
+			"keyColumn" => "integer/id"
+		);
+	}
+	
 	public function save() {
-		$columns = array("json", "integer/id", "string/title");
 		if (isset($this->id)) {
-			$sql = "UPDATE json_store_test SET
-						".$this->mysqlUpdateValues($columns)."
-					WHERE `integer/id`='".self::mysqlEscape($this->id)."'";
-			$result = self::mysqlQuery($sql);
+			$result = $this->mysqlUpdate("integer/id");
 		} else {
-			$sql = "INSERT INTO json_store_test ".$this->mysqlColumns($columns)." VALUES
-				".$this->mysqlInsertValues($columns);
-			$result = self::mysqlQuery($sql);
-			if ($result) {
-				$this->id = $result['insert_id'];
-			}
+			$result = $this->mysqlInsert($this->id);
 		}
-		var_dump($sql);
 		var_dump($result);
 		if (!$result) {
 			var_dump($this);
@@ -57,14 +55,17 @@ echo '<pre>';
 echo '<h2>Create object:</h2>';
 $obj = TestClass::create();
 var_dump($obj);
+
 echo '<hr>';
 echo '<h2>Modify title:</h2>';
 $obj->title .= "!";
 $obj->save();
+
 echo '<hr>';
 echo '<h2>Add random value:</h2>';
 $obj->randomValue = rand();
 $obj->save();
+
 echo '<hr>';
 echo '<h2>Final value:</h2>';
 var_dump($obj);

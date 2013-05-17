@@ -85,6 +85,12 @@ class StoredJson {
 		}
 	}
 	
+	/*
+	abstract function mysqlConfig() {
+		return array("json");
+	}
+	*/
+	
 	protected function merge($path, $value) {
 		$target =& $this;
 		foreach (self::splitJsonPointer($path) as $part) {
@@ -109,6 +115,24 @@ class StoredJson {
 		}
 	}
 
+	protected function set($path, $value) {
+		$target =& $this;
+		foreach (self::splitJsonPointer($path) as $part) {
+			if (!isset($target)) {
+				$target = new StdClass;
+			}
+			if (is_object($target)) {
+				if (!isset($target->$part)) {
+					$target->$part = new StdClass;
+				}
+				$target =& $target->$part;
+			} else if (is_array($target)) {
+				$target =& $target[$part];
+			}
+		}
+		$target = $value;
+	}
+	
 	protected function get($path) {
 		$target =& $this;
 		foreach (self::splitJsonPointer($path) as $part) {
@@ -130,34 +154,7 @@ class StoredJson {
 		return $target;
 	}
 		
-	protected function mysqlUpdateValues($columns) {
-		$result = array();
-		foreach ($columns as $column) {
-			$parts = explode('/', $column, 2);
-			$type = $parts[0];
-			$path = count($parts) > 1 ? '/'.$parts[1] : '';
-			$value = $this->get($path);
-			if ($type == "json") {
-				$sqlValue = "'".self::mysqlEscape(json_encode($value))."'";
-			} else if ($type == "integer") {
-				$sqlValue = is_integer($value) ? $value : 'NULL';
-			} else if ($type == "number") {
-				$sqlValue = (is_numeric($value) && !is_string($value)) ? $value : NULL;
-			} else if ($type == "string") {
-				$sqlValue = is_string($value) ? "'".self::mysqlEscape($value)."'" : 'NULL';
-			} else if ($type == "boolean") {
-				$sqlValue = is_boolean($value) ? ($value ? '1' : '0') : 'NULL';
-			}
-
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
-			}
-			$result[] = "$column=$sqlValue";
-		}
-		return implode(", ", $result);
-	}
-	
-	protected function mysqlColumns($columns) {
+	public static function mysqlEscapeColumns($columns) {
 		$result = array();
 		foreach ($columns as $column) {
 			if ($column[0] != "`") {
@@ -168,24 +165,81 @@ class StoredJson {
 		return "(".implode(", ", $result).")";
 	}
 	
+	private function mysqlValue($column) {
+		$parts = explode('/', $column, 2);
+		$type = $parts[0];
+		$path = count($parts) > 1 ? '/'.$parts[1] : '';
+		$value = $this->get($path);
+		if ($type == "json") {
+			return "'".self::mysqlEscape(json_encode($value))."'";
+		} else if ($type == "integer") {
+			return is_integer($value) ? $value : 'NULL';
+		} else if ($type == "number") {
+			return (is_numeric($value) && !is_string($value)) ? $value : NULL;
+		} else if ($type == "string") {
+			return is_string($value) ? "'".self::mysqlEscape($value)."'" : 'NULL';
+		} else if ($type == "boolean") {
+			return is_boolean($value) ? ($value ? '1' : '0') : 'NULL';
+		}
+		return 'NULL';
+	}
+	
+	protected function mysqlUpdate($keyColumns) {
+		$whereParts = array();
+		if (!is_array($keyColumns)) {
+			$keyColumns = array($keyColumns);
+		}
+		foreach ($keyColumns as $column) {
+			$sqlValue = $this->mysqlValue($column);
+			if ($column[0] != "`") {
+				$column = "`".str_replace("`", "``", $column)."`";
+			}
+			$whereParts[] = "$column=".$this->mysqlValue($column);
+		}
+		
+		$config = $this->mysqlConfig();
+		$sql = "UPDATE {$config['table']} SET
+					".$this->mysqlUpdateValues($config['columns'])."
+				WHERE ".implode(" AND ", $whereParts);
+		$result = self::mysqlQuery($sql);
+		return $result;
+	}
+
+	protected function mysqlUpdateValues($columns) {
+		$result = array();
+		foreach ($columns as $column) {
+			$sqlValue = $this->mysqlValue($column);
+			if ($column[0] != "`") {
+				$column = "`".str_replace("`", "``", $column)."`";
+			}
+			$result[] = "$column=$sqlValue";
+		}
+		return implode(", ", $result);
+	}
+	
+	protected function mysqlInsert() {
+		$config = $this->mysqlConfig();
+		$sql = "INSERT INTO {$config['table']} ".self::mysqlEscapeColumns($config['columns'])." VALUES
+			".$this->mysqlInsertValues($config['columns']);
+		var_dump($sql);
+		$result = self::mysqlQuery($sql);
+		if ($result && isset($config['keyColumn'])) {
+			$insertId = $result['insert_id'];
+			$parts = explode('/', $config['keyColumn'], 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			if ($type == "string") {
+				$insertId = (string)$insertId;
+			}
+			$this->set($path, $insertId);
+		}
+		return $result;
+	}
+	
 	protected function mysqlInsertValues($columns) {
 		$result = array();
 		foreach ($columns as $column) {
-			$parts = explode('/', $column, 2);
-			$type = $parts[0];
-			$path = count($parts) > 1 ? '/'.$parts[1] : '';
-			$value = $this->get($path);
-			if ($type == "json") {
-				$sqlValue = "'".self::mysqlEscape(json_encode($value))."'";
-			} else if ($type == "integer") {
-				$sqlValue = is_integer($value) ? $value : 'NULL';
-			} else if ($type == "number") {
-				$sqlValue = (is_numeric($value) && !is_string($value)) ? $value : NULL;
-			} else if ($type == "string") {
-				$sqlValue = is_string($value) ? "'".self::mysqlEscape($value)."'" : 'NULL';
-			} else if ($type == "boolean") {
-				$sqlValue = is_boolean($value) ? ($value ? '1' : '0') : 'NULL';
-			}
+			$sqlValue = $this->mysqlValue($column);
 
 			if ($column[0] != "`") {
 				$column = "`".str_replace("`", "``", $column)."`";
