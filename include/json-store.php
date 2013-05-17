@@ -9,7 +9,7 @@
 */
 require_once(dirname(__FILE__).'/config.php');
 
-abstract class StoredJson {
+abstract class JsonStore {
 	static private $mysqlConnection;
 	static protected $mysqlErrorMessage = FALSE;
 	static public function connectToDatabase($hostname, $username, $password, $database) {
@@ -181,10 +181,13 @@ abstract class StoredJson {
 		return 'NULL';
 	}
 	
-	protected function mysqlUpdate($keyColumns) {
+	protected function mysqlUpdate() {
+		$config = $this->mysqlConfig();
 		$whereParts = array();
-		if (!is_array($keyColumns)) {
-			$keyColumns = array($keyColumns);
+		if (isset($config['keyColumns'])) {
+			$keyColumns = $config['keyColumn'];
+		} else {
+			$keyColumns = array($config['keyColumn']);
 		}
 		foreach ($keyColumns as $column) {
 			$sqlValue = $this->mysqlValue($column);
@@ -199,6 +202,9 @@ abstract class StoredJson {
 					".$this->mysqlUpdateValues($config['columns'])."
 				WHERE ".implode(" AND ", $whereParts);
 		$result = self::mysqlQuery($sql);
+		if (!$result) {
+			throw new Exception("Error saving: ".$this->mysqlErrorMessage."\n$sql");
+		}
 		return $result;
 	}
 
@@ -218,7 +224,6 @@ abstract class StoredJson {
 		$config = $this->mysqlConfig();
 		$sql = "INSERT INTO {$config['table']} ".self::mysqlEscapeColumns($config['columns'])." VALUES
 			".$this->mysqlInsertValues($config['columns']);
-		var_dump($sql);
 		$result = self::mysqlQuery($sql);
 		if ($result && isset($config['keyColumn'])) {
 			$insertId = $result['insert_id'];
@@ -229,6 +234,9 @@ abstract class StoredJson {
 				$insertId = (string)$insertId;
 			}
 			$this->set($path, $insertId);
+		}
+		if (!$result) {
+			throw new Exception("Error inserting: ".$this->mysqlErrorMessage."\n$sql");
 		}
 		return $result;
 	}
@@ -246,6 +254,6 @@ abstract class StoredJson {
 		return "(".implode(", ", $result).")";
 	}
 }
-StoredJson::connectToDatabase(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE);
+JsonStore::connectToDatabase(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE);
 
 ?>

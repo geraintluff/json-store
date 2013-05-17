@@ -13,7 +13,7 @@ CREATE TABLE `json_store_test` (
 
 include dirname(__FILE__).'/include/json-store.php';
 
-class TestClass extends StoredJson {
+class TestClass extends JsonStore {
 	static public function open($id) {
 		$sql = "SELECT * FROM json_store_test WHERE `integer/id`='".self::mysqlEscape($id)."'";
 		$rows = self::mysqlQuery($sql);
@@ -38,15 +38,9 @@ class TestClass extends StoredJson {
 	
 	public function save() {
 		if (isset($this->id)) {
-			$result = $this->mysqlUpdate("integer/id");
+			 return $this->mysqlUpdate();
 		} else {
-			$result = $this->mysqlInsert($this->id);
-		}
-		var_dump($result);
-		if (!$result) {
-			var_dump($this);
-			die($this->mysqlErrorMessage);
-			throw new Exception("Error saving TestClass: ".$this->mysqlErrorMessage."\n$sql");
+			return $this->mysqlInsert();
 		}
 	}
 }
@@ -58,13 +52,13 @@ var_dump($obj);
 
 echo '<hr>';
 echo '<h2>Modify title:</h2>';
-$obj->title .= "!";
-$obj->save();
+$obj->title .= " :)";
+var_dump($obj->save());
 
 echo '<hr>';
 echo '<h2>Add random value:</h2>';
 $obj->randomValue = rand();
-$obj->save();
+var_dump($obj->save());
 
 echo '<hr>';
 echo '<h2>Final value:</h2>';
