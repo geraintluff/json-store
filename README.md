@@ -19,9 +19,9 @@ array(
 );
 ```
 
-`"keyColumn"` is optional - if it is present (and begins with "integer"), it is updated using the auto-increment value from the table.
+You have to either at least one of`"keyColumn"` (single value) or `"keyColumns"` (array).
 
-You can also return the property `"keyColumns"`, which provides a list of columns that uniquely identify the item (used when updating) - otherwise the value of `"keyColumns"` is used.
+If `"keyColumn"` is present (and begins with "integer"), it is updated using the auto-increment value from the table.
 
 ## Table structure
 
