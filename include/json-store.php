@@ -143,6 +143,33 @@ abstract class JsonStore {
 		}
 		$target = $value;
 	}
+
+	protected function remove($path) {
+		$target =& $this;
+		$pathParts = self::splitJsonPointer($path);
+		$finalPart = array_pop($pathParts);
+		foreach ($pathParts as $part) {
+			if (!isset($target)) {
+				return;
+			}
+			if (is_object($target)) {
+				if (!isset($target->$part)) {
+					return;
+				}
+				$target =& $target->$part;
+			} else if (is_array($target)) {
+				if (!isset($target[$part])) {
+					return;
+				}
+				$target =& $target[$part];
+			}
+		}
+		if (is_object($target)) {
+			unset($target->$finalPart);
+		} else if (is_array($target)) {
+			unset($target[$part]);
+		}
+	}
 	
 	protected function get($path) {
 		$target =& $this;
@@ -167,22 +194,23 @@ abstract class JsonStore {
 	
 	public function save() {
 		$config = $this->mysqlConfig();
-		if (isset($config['keyColumns'])) {
-			$keyColumns = $config['keyColumn'];
-		} else {
-			$keyColumns = array($config['keyColumn']);
-		}
-		foreach ($keyColumns as $column) {
-			$parts = explode('/', $column, 2);
+		if (isset($config['keyColumn'])) {
+			$parts = explode('/', $config['keyColumn'], 2);
 			$type = $parts[0];
 			$path = count($parts) > 1 ? '/'.$parts[1] : '';
 			$value = $this->get($path);
-			if (!isset($value)) {
-				// We are missing a key value
+			
+			if (isset($value)) {
+				return $this->mysqlUpdate();
+			} else {
 				return $this->mysqlInsert();
 			}
 		}
-		return $this->mysqlUpdate();
+		$result = $this->mysqlUpdate();
+		if ($result['affected_rows'] == 0) {
+			$result = $this->mysqlInsert();
+		}
+		return $result;
 	}
 	
 	public function delete() {
@@ -212,7 +240,7 @@ abstract class JsonStore {
 		$config = $this->mysqlConfig();
 		$whereParts = array();
 		if (isset($config['keyColumns'])) {
-			$keyColumns = $config['keyColumn'];
+			$keyColumns = $config['keyColumns'];
 		} else {
 			$keyColumns = array($config['keyColumn']);
 		}
@@ -285,7 +313,7 @@ abstract class JsonStore {
 		$config = $this->mysqlConfig();
 		$whereParts = array();
 		if (isset($config['keyColumns'])) {
-			$keyColumns = $config['keyColumn'];
+			$keyColumns = $config['keyColumns'];
 		} else {
 			$keyColumns = array($config['keyColumn']);
 		}
@@ -303,6 +331,15 @@ abstract class JsonStore {
 		$result = self::mysqlQuery($sql);
 		if (!$result) {
 			throw new Exception("Error deleting: ".$this->mysqlErrorMessage."\n$sql");
+		}
+		if (isset($config['keyColumn'])) {
+			$parts = explode('/', $config['keyColumn'], 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			$this->remove($path);
+		}
+		if ($result['affected_rows'] == 0) {
+			throw new Exception("Error deleting - no matches: \n$sql");
 		}
 		return $result;
 	}

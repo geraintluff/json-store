@@ -43,18 +43,22 @@ $obj = TestClass::create();
 var_dump($obj);
 
 echo '<hr>';
-echo '<h2>Modify title:</h2>';
+echo '<h2>Modify title and save:</h2>';
 $obj->title .= " :)";
 var_dump($obj->save());
 
 echo '<hr>';
-echo '<h2>Add random value:</h2>';
+echo '<h2>Add random value and save:</h2>';
 $obj->randomValue = rand();
 var_dump($obj->save());
 
 echo '<hr>';
 echo '<h2>Delete:</h2>';
 var_dump($obj->delete());
+
+echo '<hr>';
+echo '<h2>Re-save:</h2>';
+var_dump($obj->save());
 
 echo '<hr>';
 echo '<h2>Final value:</h2>';
