@@ -35,14 +35,6 @@ class TestClass extends JsonStore {
 			"keyColumn" => "integer/id"
 		);
 	}
-	
-	public function save() {
-		if (isset($this->id)) {
-			 return $this->mysqlUpdate();
-		} else {
-			return $this->mysqlInsert();
-		}
-	}
 }
 
 echo '<pre>';
@@ -59,6 +51,10 @@ echo '<hr>';
 echo '<h2>Add random value:</h2>';
 $obj->randomValue = rand();
 var_dump($obj->save());
+
+echo '<hr>';
+echo '<h2>Delete:</h2>';
+var_dump($obj->delete());
 
 echo '<hr>';
 echo '<h2>Final value:</h2>';

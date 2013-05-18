@@ -11,16 +11,30 @@ require_once(dirname(__FILE__).'/config.php');
 
 abstract class JsonStore {
 	static private $mysqlConnection;
-	static protected $mysqlErrorMessage = FALSE;
+	static private $mysqlErrorMessage = FALSE;
 	static public function connectToDatabase($hostname, $username, $password, $database) {
 		self::$mysqlConnection = new mysqli($hostname, $username, $password, $database);
 		if (self::$mysqlConnection->connect_errno) {
 			throw new Exception("Failed to connext to MySQL: ".self::$mysqlConnection->connect_error);
 		}
 	}
+	static protected function mysqlErrorMessage() {
+		return self::$mysqlErrorMessage;
+	}
 	
 	static public function mysqlEscape($value) {
 		return self::$mysqlConnection->escape_string($value);
+	}
+
+	static public function mysqlEscapeColumns($columns) {
+		$result = array();
+		foreach ($columns as $column) {
+			if ($column[0] != "`") {
+				$column = "`".str_replace("`", "``", $column)."`";
+			}
+			$result[] = $column;
+		}
+		return "(".implode(", ", $result).")";
 	}
 	
 	static public function splitJsonPointer($path) {
@@ -150,18 +164,31 @@ abstract class JsonStore {
 		}
 		return $target;
 	}
-		
-	public static function mysqlEscapeColumns($columns) {
-		$result = array();
-		foreach ($columns as $column) {
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
-			}
-			$result[] = $column;
+	
+	public function save() {
+		$config = $this->mysqlConfig();
+		if (isset($config['keyColumns'])) {
+			$keyColumns = $config['keyColumn'];
+		} else {
+			$keyColumns = array($config['keyColumn']);
 		}
-		return "(".implode(", ", $result).")";
+		foreach ($keyColumns as $column) {
+			$parts = explode('/', $column, 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			$value = $this->get($path);
+			if (!isset($value)) {
+				// We are missing a key value
+				return $this->mysqlInsert();
+			}
+		}
+		return $this->mysqlUpdate();
 	}
 	
+	public function delete() {
+		return $this->mysqlDelete();
+	}
+		
 	private function mysqlValue($column) {
 		$parts = explode('/', $column, 2);
 		$type = $parts[0];
@@ -181,7 +208,7 @@ abstract class JsonStore {
 		return 'NULL';
 	}
 	
-	protected function mysqlUpdate() {
+	private function mysqlUpdate() {
 		$config = $this->mysqlConfig();
 		$whereParts = array();
 		if (isset($config['keyColumns'])) {
@@ -208,7 +235,7 @@ abstract class JsonStore {
 		return $result;
 	}
 
-	protected function mysqlUpdateValues($columns) {
+	private function mysqlUpdateValues($columns) {
 		$result = array();
 		foreach ($columns as $column) {
 			$sqlValue = $this->mysqlValue($column);
@@ -220,7 +247,7 @@ abstract class JsonStore {
 		return implode(", ", $result);
 	}
 	
-	protected function mysqlInsert() {
+	private function mysqlInsert() {
 		$config = $this->mysqlConfig();
 		$sql = "INSERT INTO {$config['table']} ".self::mysqlEscapeColumns($config['columns'])." VALUES
 			".$this->mysqlInsertValues($config['columns']);
@@ -241,7 +268,7 @@ abstract class JsonStore {
 		return $result;
 	}
 	
-	protected function mysqlInsertValues($columns) {
+	private function mysqlInsertValues($columns) {
 		$result = array();
 		foreach ($columns as $column) {
 			$sqlValue = $this->mysqlValue($column);
@@ -252,6 +279,32 @@ abstract class JsonStore {
 			$result[] = $sqlValue;
 		}
 		return "(".implode(", ", $result).")";
+	}
+	
+	private function mysqlDelete() {
+		$config = $this->mysqlConfig();
+		$whereParts = array();
+		if (isset($config['keyColumns'])) {
+			$keyColumns = $config['keyColumn'];
+		} else {
+			$keyColumns = array($config['keyColumn']);
+		}
+		foreach ($keyColumns as $column) {
+			$sqlValue = $this->mysqlValue($column);
+			if ($column[0] != "`") {
+				$column = "`".str_replace("`", "``", $column)."`";
+			}
+			$whereParts[] = "$column=".$sqlValue;
+		}
+		
+		$config = $this->mysqlConfig();
+		$sql = "DELETE FROM {$config['table']}
+				WHERE ".implode(" AND ", $whereParts);
+		$result = self::mysqlQuery($sql);
+		if (!$result) {
+			throw new Exception("Error deleting: ".$this->mysqlErrorMessage."\n$sql");
+		}
+		return $result;
 	}
 }
 JsonStore::connectToDatabase(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE);
