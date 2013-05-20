@@ -27,15 +27,27 @@ class TestClass extends JsonStore {
 		$result->title = "Hello, World!";
 		return $result;
 	}
-	
-	protected function mysqlConfig() {
-		return array(
-			"table" => "json_store_test",
-			"columns" => array("json", "integer/id", "string/title"),
-			"keyColumn" => "integer/id"
-		);
-	}
 }
+JsonStore::addMysqlConfig('TestClass', array(
+	"table" => "json_store_test",
+	"columns" => array(
+		"json",
+		"integer/id",
+		"string/title",
+		"array/arr" => array(
+			"table" => "json_store_array",
+			"columns" => array("integer", "integer/id", "string/name")
+		)
+	),
+	"keyColumn" => "integer/id"
+));
+
+TestClass::$showQueries = TRUE;
+
+echo '<pre>';
+echo '<h2>Loading object:</h2>';
+$obj = TestClass::open(808);
+var_dump($obj);
 
 echo '<pre>';
 echo '<h2>Create object:</h2>';
@@ -43,13 +55,17 @@ $obj = TestClass::create();
 var_dump($obj);
 
 echo '<hr>';
-echo '<h2>Modify title and save:</h2>';
+echo '<h2>Modify values and save:</h2>';
 $obj->title .= " :)";
+$obj->randomValue = rand();
 var_dump($obj->save());
 
 echo '<hr>';
-echo '<h2>Add random value and save:</h2>';
-$obj->randomValue = rand();
+echo '<h2>Add array and save:</h2>';
+$obj->arr = array(
+	(object)array("id" => 1, "name" => "item 1"),
+	200
+);
 var_dump($obj->save());
 
 echo '<hr>';
@@ -63,6 +79,11 @@ var_dump($obj->save());
 echo '<hr>';
 echo '<h2>Final value:</h2>';
 var_dump($obj);
+
+echo '<hr>';
+echo '<h2>Loaded from DB:</h2>';
+$loaded = TestClass::open($obj->id);
+var_dump($loaded);
 echo '</pre>';
 
 ?>
