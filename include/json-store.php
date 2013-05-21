@@ -1,30 +1,88 @@
 <?php
 
-/*
-	Defines:
-		*	MYSQL_HOSTNAME
-		*	MYSQL_USERNAME
-		*	MYSQL_PASSWORD
-		*	MYSQL_DATABASE
-*/
-require_once(dirname(__FILE__).'/config.php');
+class JsonStorePendingArray {
+	static private $queue = array();
 
-abstract class JsonStore {
-	static public $showQueries = FALSE;
-	static private $mysqlConnection;
-	static private $mysqlErrorMessage = FALSE;
-	static public function connectToDatabase($hostname, $username, $password, $database) {
-		self::$mysqlConnection = new mysqli($hostname, $username, $password, $database);
-		if (self::$mysqlConnection->connect_errno) {
-			throw new Exception("Failed to connext to MySQL: ".self::$mysqlConnection->connect_error);
+	static public function requestPending(&$target, $config, $groupId, $pathPrefix) {
+		foreach (self::$queue as $pending) {
+			if ($pending->config == $config && $pending->pathPrefix == $pathPrefix) {
+				$pending->add($target, $groupId);
+				return;
+			}
+		}
+		$pending = new JsonStorePendingArray($config, $pathPrefix);
+		$pending->add($target, $groupId);
+		self::$queue[] = $pending;
+	}
+	
+	static public function executePending() {
+		while (count(self::$queue)) {
+			$pending = array_shift(self::$queue);
+			$pending->execute();
 		}
 	}
+
+	private $config;
+	private $targets = array();
+	private $pathPrefix;
+	private function __construct($config, $pathPrefix="") {
+		$this->config = $config;
+		$this->pathPrefix = $pathPrefix;
+	}
+	
+	private function add(&$target, $groupId) {
+		$this->targets[$groupId] =& $target;
+	}
+
+	private function execute() {
+		JsonStore::loadArrayMultiple($this->targets, $this->config, TRUE, $this->pathPrefix);
+	}
+}
+
+class JsonStore {
+	static public function executePending() {
+		JsonStorePendingArray::executePending();
+	}
+
+	static private $cache = array();
+	static public function cached() {
+		$params = func_get_args();
+		$cacheKey = self::joinJsonPointer($params);
+		if (isset(self::$cache[$cacheKey])) {
+			return self::$cache[$cacheKey];
+		}
+	}
+	static public function removeCached() {
+		$params = func_get_args();
+		$cacheKey = self::joinJsonPointer($params);
+		unset(self::$cache[$cacheKey]);
+	}
+	static public function setCached() {
+		$params = func_get_args();
+		$value = array_pop($params);
+		$cacheKey = self::joinJsonPointer($params);
+		self::$cache[$cacheKey] = $value;
+		return $value;
+	}
+	
+	static public $showQueries = FALSE;
 	static protected function mysqlErrorMessage() {
-		return self::$mysqlErrorMessage;
+		return self::$mysqlConnector->error;
 	}
 	
 	static public function mysqlEscape($value) {
-		return self::$mysqlConnection->escape_string($value);
+		return self::$mysqlConnector->escape($value);
+	}
+	
+	static private $mysqlConnector = NULL;
+	static public function setConnection($connectionObj) {
+		self::$mysqlConnector = $connectionObj;
+	}
+	static public function mysqlQuery($sql) {
+		if (self::$showQueries) {
+			echo('<div style="font-size: 0.9em; color: blue;">' . htmlentities($sql) . '</div>');
+		}
+		return self::$mysqlConnector->query($sql);
 	}
 
 	static public function splitJsonPointer($path) {
@@ -41,51 +99,81 @@ abstract class JsonStore {
 		return $result;
 	}
 	
-	static public function mysqlQuery($sql) {
-		if (self::$showQueries) {
-			echo('<div style="font-size: 0.9em; color: blue;">' . htmlentities($sql) . '</div>');
+	static public function joinJsonPointer($parts) {
+		$result = "";
+		foreach ($parts as $part) {
+			$result .= "/".str_replace('/', '~1', str_replace('~', '~0', $part));
 		}
-		$mysqlConnection = self::$mysqlConnection;
-		$result = $mysqlConnection->query($sql);
-		if (!$result) {
-			self::$mysqlErrorMessage = $mysqlConnection->error;
-			return FALSE;
-		} else {
-			self::$mysqlErrorMessage = FALSE;
+		return $result;
+	}
+	
+	private static function escapedColumn($columnName, $config) {
+		if (isset($config['alias'][$columnName])) {
+			$columnName = $config['alias'][$columnName];
 		}
-		if ($result === TRUE) {
-			return array(
-				"insert_id" => $mysqlConnection->insert_id,
-				"affected_rows" => $mysqlConnection->affected_rows,
-				"info" => $mysqlConnection->info
-			);
+		if ($columnName[0] != "`") {
+			$columnName = "`".str_replace("`", "``", $columnName)."`";
 		}
-		$resultArray = array();
-		while ($row = $result->fetch_assoc()) {
-			$resultArray[] = $row;
-		}
-		return $resultArray;
+		return $columnName;
 	}
 
-	private static function loadArray(&$target, $config, $groupId, $pathPrefix="") {
-		$sql = "SELECT * FROM {$config['table']} WHERE `group`=". (int)$groupId . " ORDER BY `index`";
+	private static function unescapedColumn($columnName, $config) {
+		if (isset($config['alias'][$columnName])) {
+			$columnName = $config['alias'][$columnName];
+		}
+		return $columnName;
+	}
+	
+	private static function lookupColumn($columnName, $config) {
+		if (isset($config['invAlias'][$columnName])) {
+			$columnName = $config['invAlias'][$columnName];
+		}
+		return $columnName;
+	}
+
+	public static function loadArrayMultiple(&$targets, $config, $delayLoading, $pathPrefix="") {
+		$whereIn = array();
+		foreach ($targets as $id => &$target) {
+			$whereIn[] = "'".self::mysqlEscape($id)."'";
+		}
+		$whereIn = '('.implode(', ', $whereIn).')';
+		$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn} ORDER BY ".self::escapedColumn("index", $config);
+		
+		$result = self::mysqlQuery($sql);
+		$groupColumn = self::unescapedColumn("group", $config);
+		$indexColumn = self::unescapedColumn("index", $config);
+		foreach ($result as $idx => $row) {
+			$groupId = $row[$groupColumn];
+			$index = $row[$indexColumn];
+			$target =& $targets[$groupId];
+			$arrayValue = self::pointerGet($target, $pathPrefix);
+			if (!is_array($arrayValue)) {
+				self::pointerSet($target, $pathPrefix, array());
+			}
+			$target = self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
+		}
+	}
+
+	private static function loadArray(&$target, $config, $delayLoading, $groupId, $pathPrefix="") {
+		$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId . " ORDER BY ".self::escapedColumn("index", $config);
 		$result = self::mysqlQuery($sql);
 		$arrayValue = self::pointerGet($target, $pathPrefix);
 		if (!is_array($arrayValue)) {
 			self::pointerSet($target, $pathPrefix, array());
 		}
 		foreach ($result as $index => $row) {
-			self::loadObject($row, $config, $target, $pathPrefix."/".$index);
+			self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
 		}
 		return $target;
 	}
 	
-	public static function loadObject($dbRow, $config, $result=NULL, $pathPrefix="") {
+	public static function loadObject($dbRow, $config, $delayLoading=FALSE, &$result=NULL, $pathPrefix="") {
 		if (!$result) {
 			$result = new StdClass;
 		}
 		ksort($dbRow);
 		foreach ($dbRow as $column => $value) {
+			$column = self::lookupColumn($column, $config);
 			if (is_null($value)) {
 				continue;
 			}
@@ -104,9 +192,32 @@ abstract class JsonStore {
 			} else if ($type == "boolean") {
 				self::pointerMerge($result, $path, (boolean)$value);
 			} else if ($type == "array") {
-				if (!is_null($value)) {
-					$arrayConfig = $config['columns'][$column];
-					self::loadArray($result, $arrayConfig, $value, $path);
+				$arrayConfig = $config['columns'][$column];
+				if (!$arrayConfig['parentColumn'] && !is_null($value)) {
+					if (!$delayLoading) {
+						self::loadArray($result, $arrayConfig, FALSE, $value, $path);
+					} else {
+						JsonStorePendingArray::requestPending($result, $arrayConfig, $value, $path);
+					}
+				}
+			}
+		}
+		foreach ($config['columns'] as $column => $subConfig) {
+			$parts = explode('/', $column, 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			$path = $pathPrefix.$path;
+			if ($type == "array") {
+				if ($subConfig['parentColumn']) {
+					$groupColumn = $subConfig['parentColumn'];
+					$value = $dbRow[$groupColumn];
+					if (!is_null($value)) {
+						if (!$delayLoading) {
+							self::loadArray($result, $subConfig, FALSE, $value, $path);
+						} else {
+							JsonStorePendingArray::requestPending($result, $subConfig, $value, $path);
+						}
+					}
 				}
 			}
 		}
@@ -214,16 +325,30 @@ abstract class JsonStore {
 	static private $mysqlConfigs = array();
 	static public function addMysqlConfig($className, $config) {
 		$newColumns = array();
+		if (!isset($config['alias'])) {
+			$config['alias'] = array();
+		}
+		foreach ($config['alias'] as $columnName => $aliasName) {
+			if (!isset($config['columns'][$columnName])) {
+				$config['columns'][$columnName] = $columnName;
+			}
+		}
+
 		foreach ($config['columns'] as $columnName => $subConfig) {
 			if (is_numeric($columnName)) {
 				$columnName = $subConfig;
 			}
 			if (is_array($subConfig)) {
 				$subConfig = self::addMysqlConfig(NULL, $subConfig);
+			} else if (is_string($subConfig) && $subConfig != $columnName && !isset($config['alias'][$columnName])) {
+				$config['alias'][$columnName] = $subConfig;
 			}
-			$newColumns[$columnName] = $subConfig;
+			if ($columnName != 'group' && $columnName != 'index') {
+				$newColumns[$columnName] = $subConfig;
+			}
 		}
 		$config['columns'] = $newColumns;
+		$config['invAlias'] = array_flip($config['alias']);
 		
 		if ($className) {
 			self::$mysqlConfigs[$className] = $config;
@@ -231,22 +356,42 @@ abstract class JsonStore {
 		return $config;
 	}
 	
-	protected function __construct($value=NULL) {
+	protected function __construct($value=NULL, $delay=FALSE) {
 		if (!$value) {
 			return;
 		}
 		if (is_array($value)) {
 			$config = $this->mysqlConfig();
-			$value = self::loadObject($value, $config);
-		}
-		foreach ($value as $k => $v) {
-			$this->$k = $v;
+			self::loadObject($value, $config, $delay, $this);
+		} else {
+			foreach ($value as $k => $v) {
+				$this->$k = $v;
+			}
 		}
 	}
 	
 	private function mysqlConfig() {
 		$className = get_class($this);
 		return self::$mysqlConfigs[$className];
+	}
+	
+	public function updateValue($obj) {
+		$config = $this->mysqlConfig();
+		if (isset($config['keyColumn'])) {
+			$parts = explode('/', $config['keyColumn'], 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			$value = self::pointerGet($this, $path);
+			self::pointerSet($obj, $path, $value);
+		}
+		foreach ($obj as $key => $value) {
+			$this->$key = $value;
+		}
+		foreach ($this as $key => $value) {
+			if (!isset($obj->$key)) {
+				unset($this->$key);
+			}
+		}
 	}
 	
 	public function save() {
@@ -279,6 +424,9 @@ abstract class JsonStore {
 		$type = $parts[0];
 		$path = count($parts) > 1 ? '/'.$parts[1] : '';
 		$value = self::pointerGet($target, $path);
+		if ($value instanceof JsonStore && $path != "") {
+			return "WHAT WHAT WHAT";
+		}
 		if ($type == "json") {
 			return "'".self::mysqlEscape(json_encode($value))."'";
 		} else if ($type == "integer") {
@@ -288,7 +436,7 @@ abstract class JsonStore {
 		} else if ($type == "string") {
 			return is_string($value) ? "'".self::mysqlEscape($value)."'" : 'NULL';
 		} else if ($type == "boolean") {
-			return is_boolean($value) ? ($value ? '1' : '0') : 'NULL';
+			return is_bool($value) ? ($value ? '1' : '0') : 'NULL';
 		}
 		return 'NULL';
 	}
@@ -302,9 +450,7 @@ abstract class JsonStore {
 		}
 		foreach ($keyColumns as $column) {
 			$sqlValue = self::mysqlValue($value, $column);
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
-			}
+			$column = self::escapedColumn($column, $config);
 			$whereParts[] = "$column=".$sqlValue;
 		}
 		
@@ -329,6 +475,15 @@ abstract class JsonStore {
 				self::mysqlDeleteArray($column, $value, $config, $whereParts);
 				$subValue = self::pointerGet($value, $path);
 				if (is_array($subValue)) {
+					if (isset($subConfig['parentColumn'])) {
+						$realColumn = self::lookupColumn($subConfig['parentColumn'], $config);
+						$parts = explode('/', $config['keyColumn'], 2);
+						$type = $parts[0];
+						$path = count($parts) > 1 ? '/'.$parts[1] : '';
+						$groupId = self::pointerGet($value, $path);
+						self::mysqlInsertArray($subValue, $subConfig, $groupId);
+						continue;
+					}
 					$sqlValue = self::mysqlInsertArray($subValue, $subConfig);
 				} else {
 					$sqlValue = 'NULL';
@@ -337,28 +492,37 @@ abstract class JsonStore {
 				$sqlValue = self::mysqlValue($value, $column);
 			}
 
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
+			if (is_array($subConfig) && isset($subConfig['parentColumn'])) {
+				continue;
 			}
+			$column = self::escapedColumn($column, $config);
 			$result[] = "$column=$sqlValue";
 		}
 		return implode(", ", $result);
 	}
 	
-	static public function mysqlInsertColumns($columns, $extras=NULL) {
-		$result = $extras ? $extras : array();
-		foreach ($columns as $column => $config) {
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
+	static public function mysqlInsertColumns($config, $extras=NULL) {
+		$columns = $config['columns'];
+		$result = array();
+		if ($extras) {
+			foreach ($extras as $column) {
+				$column = self::escapedColumn($column, $config);
+				$result[] = $column;
 			}
+		}
+		foreach ($columns as $column => $subConfig) {
+			if (is_array($subConfig) && isset($subConfig['parentColumn'])) {
+				continue;
+			}
+			$column = self::escapedColumn($column, $config);
 			$result[] = $column;
 		}
 		return "(".implode(", ", $result).")";
 	}
 
 	static private function mysqlInsert(&$value, $config) {
-		$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config['columns'])." VALUES
-			".self::mysqlInsertValues($value, $config['columns']);
+		$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config)." VALUES
+			".self::mysqlInsertValues($value, $config);
 		$result = self::mysqlQuery($sql);
 
 		if ($result && isset($config['keyColumn'])) {
@@ -370,19 +534,22 @@ abstract class JsonStore {
 				$insertId = (string)$insertId;
 			}
 			self::pointerSet($value, $path, $insertId);
+			self::setCached(get_class($value), $insertId, $value);
 		}
 		if (!$result) {
-			throw new Exception("Error inserting: ".$value->mysqlErrorMessage."\n$sql");
+			throw new Exception("Error inserting: ".self::$mysqlErrorMessage."\n\t$sql\n");
 		}
 		return $result;
 	}
 	
-	static private function mysqlInsertArray($value, $config) {
-		$groupId = 'NULL';
+	static private function mysqlInsertArray($value, $config, $groupId=NULL) {
+		if (is_null($groupId)) {
+			$groupId = 'NULL';
+		}
 		foreach ($value as $idx => $row) {
 			$idx = (int)$idx;
-			$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config['columns'], array('`group`', '`index`'))." VALUES
-				".self::mysqlInsertValues($row, $config['columns'], array($groupId, $idx));
+			$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config, array('group', 'index'))." VALUES
+				".self::mysqlInsertValues($row, $config, array($groupId, $idx));
 			$result = self::mysqlQuery($sql);
 			if ($groupId == 'NULL') {
 				$groupId = $result['insert_id'];
@@ -394,7 +561,8 @@ abstract class JsonStore {
 		return $groupId;
 	}
 	
-	static private function mysqlInsertValues($value, $columns, $extras=NULL) {
+	static private function mysqlInsertValues($value, $config, $extras=NULL) {
+		$columns = $config['columns'];
 		$result = $extras ? $extras : array();
 		foreach ($columns as $column => $subConfig) {
 			$parts = explode('/', $column, 2);
@@ -404,15 +572,22 @@ abstract class JsonStore {
 			if ($type == "array") {
 				$subValue = self::pointerGet($value, $path);
 				if (is_array($subValue)) {
-					$sqlValue = self::mysqlInsertArray($subValue, $subConfig);
+					$groupId = NULL;
+					if (isset($subConfig['parentColumn'])) {
+						$realColumn = self::lookupColumn($subConfig['parentColumn'], $config);
+						$parts = explode('/', $config['keyColumn'], 2);
+						$type = $parts[0];
+						$path = count($parts) > 1 ? '/'.$parts[1] : '';
+						$groupId = self::pointerGet($value, $path);
+						self::mysqlInsertArray($subValue, $subConfig, $groupId);
+						continue;
+					}
+					$sqlValue = self::mysqlInsertArray($subValue, $subConfig, $groupId);
 				} else {
 					$sqlValue = 'NULL';
 				}
 			} else {
 				$sqlValue = self::mysqlValue($value, $column);
-			}
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
 			}
 			$result[] = $sqlValue;
 		}
@@ -428,9 +603,7 @@ abstract class JsonStore {
 		}
 		foreach ($keyColumns as $column) {
 			$sqlValue = self::mysqlValue($value, $column);
-			if ($column[0] != "`") {
-				$column = "`".str_replace("`", "``", $column)."`";
-			}
+			$column = self::escapedColumn($column, $config);
 			$whereParts[] = "$column=".$sqlValue;
 		}
 		
@@ -453,6 +626,7 @@ abstract class JsonStore {
 			$parts = explode('/', $config['keyColumn'], 2);
 			$type = $parts[0];
 			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			self::removeCached(get_class($value), self::pointerGet($value, $path));
 			self::pointerRemove($value, $path);
 		}
 		if ($result['affected_rows'] == 0) {
@@ -464,11 +638,11 @@ abstract class JsonStore {
 	static private function mysqlDeleteArray($arrayColumn, $value, $config, $whereParts) {
 		$arrayConfig = $config['columns'][$arrayColumn];
 		$arrayTable = $arrayConfig['table'];
-		
-		$arrayColumnSql = $arrayColumn;
-		if ($arrayColumnSql[0] != "`") {
-			$arrayColumnSql = "`".str_replace("`", "``", $arrayColumnSql)."`";
+		if ($arrayConfig['parentColumn']) {
+			$arrayColumn = $arrayConfig['parentColumn'];
 		}
+		
+		$arrayColumnSql = self::escapedColumn($arrayColumn, $config);
 		$sql = "SELECT {$arrayColumnSql} FROM {$config['table']}
 				WHERE ".implode(" AND ", $whereParts);
 		$result = self::mysqlQuery($sql);
@@ -481,13 +655,66 @@ abstract class JsonStore {
 		}
 		
 		if (count($whereIn)) {
-			$sql = "DELETE FROM {$arrayTable} WHERE `group` IN (".implode($whereIn).")";
+			$sql = "DELETE FROM {$arrayTable} WHERE ".self::escapedColumn('group', $arrayConfig)." IN (".implode($whereIn).")";
 			return self::mysqlQuery($sql);
-			var_dump($sql);
 		}
 		return TRUE;
 	}
 }
-JsonStore::connectToDatabase(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE);
+
+abstract class JsonStoreConnection {
+	public $error = FALSE;
+
+	abstract public function query($sql);
+	abstract public function escape($value);
+}
+
+class JsonStoreConnectionBasic extends JsonStoreConnection {
+	private $mysqlConnection;
+	
+	public function __construct($hostname, $username, $password, $database) {
+		$this->mysqlConnection = new mysqli($hostname, $username, $password, $database);
+		if ($this->mysqlConnection->connect_errno) {
+			throw new Exception("Failed to connext to MySQL: ".$this->mysqlConnection->connect_error);
+		}
+	}
+
+	public function query($sql) {
+		$mysqlConnection = $this->mysqlConnection;
+		$result = $mysqlConnection->query($sql);
+		if (!$result) {
+			$this->error = $mysqlConnection->error;
+			return FALSE;
+		} else {
+			$this->error = FALSE;
+		}
+		if ($result === TRUE) {
+			return array(
+				"insert_id" => $mysqlConnection->insert_id,
+				"affected_rows" => $mysqlConnection->affected_rows,
+				"info" => $mysqlConnection->info
+			);
+		}
+		$resultArray = array();
+		while ($row = $result->fetch_assoc()) {
+			$resultArray[] = $row;
+		}
+		return $resultArray;
+	}
+	
+	public function escape($value) {
+		return $this->mysqlConnection->escape_string($value);
+	}
+}
+
+/*
+	Defines:
+		*	MYSQL_HOSTNAME
+		*	MYSQL_USERNAME
+		*	MYSQL_PASSWORD
+		*	MYSQL_DATABASE
+*/
+require_once(dirname(__FILE__).'/config.php');
+JsonStore::setConnection(new JsonStoreConnectionBasic(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE));
 
 ?>
