@@ -1,7 +1,5 @@
 <?php
 
-header("Content-Type: application/json");
-
 if (!defined('DEBUG')) {
 	define('DEBUG', false);
 }
@@ -37,8 +35,13 @@ if (!function_exists('http_response_code')) {
 $jsonLogMessages = array();
 function json_debug($message) {
 	global $jsonLogMessages;
+	if (strlen($message) > 200) {
+		$message = substr($message, 0, 197)."...";
+	}
 	if (DEBUG) {
 		$jsonLogMessages[] = $message;
+		$message = str_replace("\n", " / ", $message);
+		header("X-Debug: $message", false);
 	}
 }
 
@@ -63,22 +66,21 @@ function json_error($message, $statusCode=NULL, $data=NULL) {
 		$backtrace = array_slice(debug_backtrace(), 1);
 		$result->trace = $backtrace;
 	}
+	header("Content-Type: application/json");
 	echo json_encode($result);
 	exit(1);
 }
 
 function json_exit($data, $schemaUrl=NULL) {
+	return json_exit_raw(json_encode($data), $schemaUrl);
+}
+
+function json_exit_raw($jsonText, $schemaUrl=NULL) {
 	global $jsonLogMessages;
 	if ($schemaUrl != NULL) {
 		header("Content-Type: application/json; profile=".$schemaUrl);
 	}
-	if (DEBUG) {
-		foreach ($jsonLogMessages as $message) {
-			$message = str_replace("\n", " / ", $message);
-			header("X-Debug: $message", false);
-		}
-	}
-	echo json_encode($data);
+	echo $jsonText;
 	exit(0);
 }
 
