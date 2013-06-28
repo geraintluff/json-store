@@ -1,5 +1,7 @@
 <?php
 
+include_once(dirname(__FILE__).'/json-store-search.php');
+
 class JsonStorePendingArray {
 	static private $queue = array();
 
@@ -107,7 +109,7 @@ class JsonStore {
 		return $result;
 	}
 	
-	private static function escapedColumn($columnName, $config) {
+	public static function escapedColumn($columnName, $config) {
 		if (isset($config['alias'][$columnName])) {
 			$columnName = $config['alias'][$columnName];
 		}
@@ -135,6 +137,10 @@ class JsonStore {
 		$whereIn = array();
 		foreach ($targets as $id => &$target) {
 			$whereIn[] = "'".self::mysqlEscape($id)."'";
+			$arrayValue = self::pointerGet($target, $pathPrefix);
+			if (!is_array($arrayValue)) {
+				self::pointerSet($target, $pathPrefix, array());
+			}
 		}
 		$whereIn = '('.implode(', ', $whereIn).')';
 		$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn} ORDER BY ".self::escapedColumn("index", $config);
@@ -146,10 +152,6 @@ class JsonStore {
 			$groupId = $row[$groupColumn];
 			$index = $row[$indexColumn];
 			$target =& $targets[$groupId];
-			$arrayValue = self::pointerGet($target, $pathPrefix);
-			if (!is_array($arrayValue)) {
-				self::pointerSet($target, $pathPrefix, array());
-			}
 			$target = self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
 		}
 	}
@@ -356,6 +358,13 @@ class JsonStore {
 		return $config;
 	}
 	
+	static public function queryFromSchema($className, $schema, $orderBy=NULL) {
+		$config = self::$mysqlConfigs[$className];
+		$search = new JsonStoreSearch($config, $schema);
+		$sql = $search->mysqlQuery(NULL, $orderBy);
+		return $sql;
+	}
+	
 	protected function __construct($value=NULL, $delay=FALSE) {
 		if (!$value) {
 			return;
@@ -370,7 +379,7 @@ class JsonStore {
 		}
 	}
 	
-	private function mysqlConfig() {
+	protected function mysqlConfig() {
 		$className = get_class($this);
 		return self::$mysqlConfigs[$className];
 	}
@@ -419,7 +428,7 @@ class JsonStore {
 		return self::mysqlDelete($this, $this->mysqlConfig());
 	}
 		
-	static private function mysqlValue($target, $column) {
+	static public function mysqlValue($target, $column) {
 		$parts = explode('/', $column, 2);
 		$type = $parts[0];
 		$path = count($parts) > 1 ? '/'.$parts[1] : '';
@@ -459,7 +468,7 @@ class JsonStore {
 				WHERE ".implode(" AND ", $whereParts);
 		$result = self::mysqlQuery($sql);
 		if (!$result) {
-			throw new Exception("Error saving: ".$value->mysqlErrorMessage."\n$sql");
+			throw new Exception("Error saving: ".self::mysqlErrorMessage()."\n$sql");
 		}
 		return $result;
 	}
@@ -477,7 +486,7 @@ class JsonStore {
 				if (is_array($subValue)) {
 					if (isset($subConfig['parentColumn'])) {
 						$realColumn = self::lookupColumn($subConfig['parentColumn'], $config);
-						$parts = explode('/', $config['keyColumn'], 2);
+						$parts = explode('/', $realColumn, 2);
 						$type = $parts[0];
 						$path = count($parts) > 1 ? '/'.$parts[1] : '';
 						$groupId = self::pointerGet($value, $path);
@@ -536,8 +545,32 @@ class JsonStore {
 			self::pointerSet($value, $path, $insertId);
 			self::setCached(get_class($value), $insertId, $value);
 		}
+
+		// Insert all the arrays that relied on 'parentColumn', in case they relied on an insert_id
+		$columns = $config['columns'];
+		foreach ($columns as $column => $subConfig) {
+			if (!is_array($subConfig) || !isset($subConfig['parentColumn'])) {
+				continue;
+			}
+			$parts = explode('/', $column, 2);
+			$type = $parts[0];
+			$path = count($parts) > 1 ? '/'.$parts[1] : '';
+			
+			if ($type == "array") {
+				$subValue = self::pointerGet($value, $path);
+				if (is_array($subValue)) {
+					$realColumn = self::lookupColumn($subConfig['parentColumn'], $config);
+					$parts = explode('/', $realColumn, 2);
+					$type = $parts[0];
+					$path = count($parts) > 1 ? '/'.$parts[1] : '';
+					$groupId = self::pointerGet($value, $path);
+					self::mysqlInsertArray($subValue, $subConfig, $groupId);
+				}
+			}
+		}
+
 		if (!$result) {
-			throw new Exception("Error inserting: ".self::$mysqlErrorMessage."\n\t$sql\n");
+			throw new Exception("Error inserting: ".self::mysqlErrorMessage()."\n\t$sql\n");
 		}
 		return $result;
 	}
@@ -565,6 +598,9 @@ class JsonStore {
 		$columns = $config['columns'];
 		$result = $extras ? $extras : array();
 		foreach ($columns as $column => $subConfig) {
+			if (is_array($subConfig) && isset($subConfig['parentColumn'])) {
+				continue;
+			}
 			$parts = explode('/', $column, 2);
 			$type = $parts[0];
 			$path = count($parts) > 1 ? '/'.$parts[1] : '';
@@ -572,17 +608,7 @@ class JsonStore {
 			if ($type == "array") {
 				$subValue = self::pointerGet($value, $path);
 				if (is_array($subValue)) {
-					$groupId = NULL;
-					if (isset($subConfig['parentColumn'])) {
-						$realColumn = self::lookupColumn($subConfig['parentColumn'], $config);
-						$parts = explode('/', $config['keyColumn'], 2);
-						$type = $parts[0];
-						$path = count($parts) > 1 ? '/'.$parts[1] : '';
-						$groupId = self::pointerGet($value, $path);
-						self::mysqlInsertArray($subValue, $subConfig, $groupId);
-						continue;
-					}
-					$sqlValue = self::mysqlInsertArray($subValue, $subConfig, $groupId);
+					$sqlValue = self::mysqlInsertArray($subValue, $subConfig);
 				} else {
 					$sqlValue = 'NULL';
 				}
@@ -620,7 +646,7 @@ class JsonStore {
 				WHERE ".implode(" AND ", $whereParts);
 		$result = self::mysqlQuery($sql);
 		if (!$result) {
-			throw new Exception("Error deleting: ".self::mysqlErrorMessage."\n$sql");
+			throw new Exception("Error deleting: ".self::mysqlErrorMessage()."\n$sql");
 		}
 		if (isset($config['keyColumn'])) {
 			$parts = explode('/', $config['keyColumn'], 2);
