@@ -733,14 +733,4 @@ class JsonStoreConnectionBasic extends JsonStoreConnection {
 	}
 }
 
-/*
-	Defines:
-		*	MYSQL_HOSTNAME
-		*	MYSQL_USERNAME
-		*	MYSQL_PASSWORD
-		*	MYSQL_DATABASE
-*/
-require_once(dirname(__FILE__).'/config.php');
-JsonStore::setConnection(new JsonStoreConnectionBasic(MYSQL_HOSTNAME, MYSQL_USERNAME, MYSQL_PASSWORD, MYSQL_DATABASE));
-
 ?>

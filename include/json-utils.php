@@ -79,6 +79,8 @@ function json_exit_raw($jsonText, $schemaUrl=NULL) {
 	global $jsonLogMessages;
 	if ($schemaUrl != NULL) {
 		header("Content-Type: application/json; profile=".$schemaUrl);
+	} else {
+		header("Content-Type: application/json");
 	}
 	echo $jsonText;
 	exit(0);
@@ -100,6 +102,24 @@ function json_handle_error($errorNumber, $errorString, $errorFile, $errorLine) {
 	} else {
 		json_error("Error $errorNumber: $errorString", 500, array("file" => $errorFile, "line" => $errorLine));
 	}
+}
+
+function link_header($url, $rel, $params=NULL) {
+	if (is_array($rel)) {
+		$params = $rel;
+	} else if (!$params) {
+		$params = array("rel" => $rel);
+	} else {
+		$params['rel'] = $rel;
+	}
+	$parts = array("Link: <$url>");
+	foreach ($params as $key => $value) {
+		if (strpos(" ", $value) !== FALSE) {
+			$value = json_encode($value);
+		}
+		$parts[] = "$key=$value";
+	}
+	header(implode("; ", $parts), FALSE);
 }
 
 set_error_handler('json_handle_error', E_ALL|E_STRICT);

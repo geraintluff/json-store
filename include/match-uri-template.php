@@ -39,7 +39,14 @@
 			$nextExtract = ($nextPos === FALSE) ? $template : substr($template, 0, $nextPos);
 			
 			if ($nextExtract == "") {
-				$params[$varName] = $pathInfo;
+				$value = $pathInfo;
+				if (is_numeric($value)) {
+					$value = (float)$value;
+					if ((int)$value == $value) {
+						$value = (int)$value;
+					}
+				}
+				$params[$varName] = $value;
 				return (object)$params;
 			}
 			
@@ -48,6 +55,12 @@
 				return FALSE;
 			}
 			$value = substr($pathInfo, 0, $endOfValuePos);
+			if (is_numeric($value)) {
+				$value = (float)$value;
+				if ((int)$value == $value) {
+					$value = (int)$value;
+				}
+			}
 			$params[$varName] = $value;
 			
 			$pathInfo = substr($pathInfo, $endOfValuePos);
