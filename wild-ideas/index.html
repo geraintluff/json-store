@@ -1,0 +1,52 @@
+<html>
+	<head>
+		<title>Wild Ideas tracker</title>
+		<meta name="viewport" content="width=480" />
+		<link href="style/grass/main.css" rel="stylesheet"></link>
+	</head>
+	<body>
+		<div id="background">
+		</div>
+		<div id="top-bar" class="blue-gradient">
+			<div id="about-us" href="#">powered by <a href="http://jsonary.com/">magic</a></div>
+			<h1>Wild Ideas tracker</h1>
+		</div>
+		<div id="content">
+			<ul id="page-menu" class="gentle-blue-gradient">
+				<li class="current"><a href="#">Menu item 1</a>
+				<li><a href="#">Second item</a>
+				<li><a href="#">Item #3</a>
+			</ul>
+
+			<div class="box diagonal-gradient">
+				<div class="title blue-gradient">
+					What is this?
+				</div>
+				<p>This is a demo of how JsonStore and Jsonary can be used to quickly assemble an API and an interface.
+				<p>It tracks ideas, because why not?
+			</div>
+
+			<div id="jsonary-target">
+				<div class="loading"></div>
+			</div>
+			
+		<div>
+		<script src="jsonary/jsonary.js"></script>
+		<script src="jsonary/plugins/jsonary.undo.js"></script>
+		<script src="jsonary/plugins/jsonary.render.table.js"></script>
+		<script src="jsonary/plugins/jsonary.render.generate.js"></script>
+		<script src="jsonary/renderers/list-links.js"></script>
+		<link href="jsonary/renderers/common.css" rel="stylesheet"></link>
+		<script src="jsonary/renderers/plain.jsonary.js"></script>
+		<link href="jsonary/renderers/plain.jsonary.css" rel="stylesheet"></link>
+		<script src="style/renderers/ideas.js"></script>
+		<script>
+			var target = document.getElementById('jsonary-target');
+
+			var renderContext;
+			Jsonary.render(target, 'json/ideas/', {}, function (context) {
+				renderContext = context;
+			});
+		</script>
+	</body>
+</html>

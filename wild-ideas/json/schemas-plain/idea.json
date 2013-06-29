@@ -1,0 +1,59 @@
+{
+	"title": "Wild Idea",
+	"type": "object",
+	"properties": {
+		"id": {
+			"type": "integer",
+			"readOnly": true
+		},
+		"title": {
+			"title": "Title",
+			"type": "string"
+		},
+		"feasibility": {
+			"title": "Feasibility",
+			"enum": [
+				"impossible",
+				"unlikely",
+				"possible",
+				"likely",
+				"certain",
+				"unknown"
+			],
+			"default": "unknown"
+		}
+	},
+	"required": ["id", "title", "feasibility"],
+	"links": [
+		{
+			"href": "{JSON_ROOT}/ideas/{id}",
+			"rel": "self"
+		},
+		{
+			"href": "",
+			"rel": "edit"
+		},
+		{
+			"href": "",
+			"rel": "delete"
+		}
+	],
+	"definitions": {
+		"array": {
+			"type": "array",
+			"items": {"$ref": "#"},
+			"links": [
+				{
+					"href": "",
+					"rel": "create",
+					"schema": {
+						"allOf": [{"$ref": "#"}],
+						"properties": {
+							"id": {"enum": [0]}
+						}
+					}
+				}
+			]
+		}
+	}
+}
