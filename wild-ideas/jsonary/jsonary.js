@@ -1212,8 +1212,8 @@ var Utils = {
 	},
 	joinPointer: function (pointerComponents) {
 		var result = "";
-		for (var i = 0; i < parts.length; i++) {
-			result += "/" + Utils.encodePointerComponent(parts[i]);
+		for (var i = 0; i < pointerComponents.length; i++) {
+			result += "/" + Utils.encodePointerComponent(pointerComponents[i]);
 		}
 		return result;
 	}
@@ -5995,6 +5995,7 @@ publicApi.UriTemplate = UriTemplate;
 			}
 			if (data.getData != undefined) {
 				var thisContext = this;
+				element.innerHTML = '<div class="loading"></div>';
 				data.getData(function (actualData) {
 					thisContext.render(element, actualData, label, uiStartingState, contextCallback);
 				});
@@ -6070,7 +6071,7 @@ publicApi.UriTemplate = UriTemplate;
 				});
 				if (!rendered) {
 					rendered = true;
-					return '<span id="' + elementId + '" class="loading">Loading...</span>';
+					return '<span id="' + elementId + '"><div class="loading"></div></span>';
 				}
 			}
 			

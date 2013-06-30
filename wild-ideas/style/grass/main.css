@@ -97,7 +97,7 @@ h1 {
 	padding: 0.5em;
 	padding-left: 2em;
 	box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.1);
-	opacity: 0.85;
+	opacity: 0.9;
 	transition: box-shadow 2s;
 }
 
@@ -156,6 +156,7 @@ h1 {
 		box-shadow: 0px 0px 4px rgba(0, 0, 0, 0.5);
 		margin: 0;
 		padding: 0;
+		z-index: 100000;
 	}
 	
 	#page-menu li {

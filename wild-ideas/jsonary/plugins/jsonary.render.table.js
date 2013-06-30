@@ -32,7 +32,7 @@
 				var columnPath = config.columns[i];
 				var cellData = (columnPath == "" || columnPath.charAt(0) == "/") ? rowData.subPath(columnPath) : rowData;
 				var cellRenderHtml = config.cellRenderHtml[columnPath] || config.defaultCellRenderHtml;
-				result += cellRenderHtml(cellData, thisRenderer.cellContext(cellData, context, columnPath));
+				result += cellRenderHtml.call(this, cellData, thisRenderer.cellContext(cellData, context, columnPath));
 			}
 			result += '</tr>';
 			return result;
