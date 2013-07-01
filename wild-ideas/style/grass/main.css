@@ -225,6 +225,17 @@ p {
 	background-color: #BCD;
 }
 
+.json-array-table-full-title {
+	margin: -1em;
+	margin-top: -0.3em;
+	margin-bottom: 1em;
+	background-color: #ABC;
+	border-bottom: 1px solid #888;
+	box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.2);
+	font-weight: bold;
+	padding: 0.2em;
+}
+
 /** Gradients **/
 
 /* http://www.colorzilla.com/gradient-editor/#3d8de2+0,4eacf4+17,4096ee+31,3b78db+80,276bd8+100;Custom */
