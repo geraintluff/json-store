@@ -1,7 +1,7 @@
 <?php
 
 // Assume this file is placed in the root of the JSON app
-$JSON_ROOT = dirname(substr(__FILE__, strlen($_SERVER['DOCUMENT_ROOT'])));
+$JSON_ROOT = str_replace('\\', '/', dirname(substr(__FILE__, strlen($_SERVER['DOCUMENT_ROOT']))));
 define('JSON_ROOT', $JSON_ROOT);
 define('SCHEMA_ROOT', JSON_ROOT.'/schemas');
 
