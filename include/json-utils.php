@@ -114,7 +114,7 @@ function link_header($url, $rel, $params=NULL) {
 	}
 	$parts = array("Link: <$url>");
 	foreach ($params as $key => $value) {
-		if (strpos(" ", $value) !== FALSE) {
+		if (strpos($value, ' ') !== FALSE) {
 			$value = json_encode($value);
 		}
 		$parts[] = "$key=$value";
