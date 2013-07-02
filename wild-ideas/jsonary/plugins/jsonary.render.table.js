@@ -1,38 +1,88 @@
 (function (Jsonary) {
+	var tableRendererConfigDefaults = {
+		columns: [],
+		titles: {},
+		titleHtml: {},
+		defaultTitleHtml:  function (data, context, columnPath) {
+			return '<th>' + Jsonary.escapeHtml(this.titles[columnPath] != undefined ? this.titles[columnPath] : columnPath) + '</th>';
+		},
+		cellRenderHtml: {},
+		defaultCellRenderHtml: function (cellData, context, columnPath) {
+			return '<td>' + context.renderHtml(cellData) + '</td>';
+		},
+		rowOrder: function (data, context) {
+			var result = [];
+			var length = data.length();
+			while (result.length < length) {
+				result.push(result.length);
+			}
+			return result;
+		},
+		tableRenderHtml: function (data, context) {
+			var result = '';
+			result += '<table class="json-array-table">';
+			result += this.tableHeadRenderHtml(data, context);
+			result += this.tableBodyRenderHtml(data, context);
+			result += '</table>';
+			return result;
+		},
+		tableHeadRenderHtml: function (data, context) {
+			var result = '<thead><tr>';
+			for (var i = 0; i < this.columns.length; i++) {
+				var columnPath = this.columns[i];
+				result += this.titleHtml[columnPath](data, context);
+			}
+			return result + '</tr></thead>';
+		},
+		tableBodyRenderHtml: function (data, context) {
+			var config = this.config;
+			var result = '<tbody>';
+			var rowOrder = this.rowOrder(data, context);
+			for (var i = 0; i < rowOrder.length; i++) {
+				var rowData = data.item(rowOrder[i]);
+				result += this.rowRenderHtml(rowData, context);
+			}
+			return result + '</tbody>';
+		}
+	};
+
 	function TableRenderer (config) {
+		if (!(this instanceof TableRenderer)) {
+			return new TableRenderer(config);
+		}
 		var thisRenderer = this;
 		
 		config = config || {};
 		this.config = config;
 		
-		config.columns = config.columns || [];
-		config.titles = config.titles || {};
-		config.titleHtml = config.titleHtml || {};
-		config.defaultTitleHtml = config.defaultTitleHtml || function (data, context, columnPath) {
-			return '<th>' + Jsonary.escapeHtml(this.titles[columnPath] != undefined ? this.titles[columnPath] : columnPath) + '</th>';
-		};
-		config.cellRenderHtml = config.cellRenderHtml || {};
-		config.defaultCellRenderHtml = config.defaultCellRenderHtml || function (cellData, context) {
-			return '<td>' + context.renderHtml(cellData) + '</td>';
-		};
-		config.defaultRenderHtml = function (data, context) {
-			return thisRenderer.tableRenderHtml(data, context);
+		for (var key in tableRendererConfigDefaults) {
+			config[key] = config[key] || tableRendererConfigDefaults[key];
 		}
+		
 		config.defaultRowRenderHtml = function (rowData, context) {
 			var result = "<tr>";
 			for (var i = 0; i < config.columns.length; i++) {
 				var columnPath = config.columns[i];
 				var cellData = (columnPath == "" || columnPath.charAt(0) == "/") ? rowData.subPath(columnPath) : rowData;
-				var cellRenderHtml = config.cellRenderHtml[columnPath] || config.defaultCellRenderHtml;
-				result += cellRenderHtml.call(this, cellData, thisRenderer.cellContext(cellData, context, columnPath));
+				var cellRenderHtml = config.cellRenderHtml[columnPath];
+				result += this.cellRenderHtml[columnPath](cellData, context);
 			}
 			result += '</tr>';
 			return result;
 		};
-
-		config.classes = config.classes || {};
-		config.classes.table = config.classes.table || "json-array-table";
+		config.rowRenderHtml = config.rowRenderHtml || config.defaultRowRenderHtml;
+		for (var i = 0; i < config.columns.length; i++) {
+			var columnPath = config.columns[i];
+			config.cellRenderHtml[key] = config.cellRenderHtml[key] || config.defaultCellRenderHtml;
+			config.titleHtml[key] = config.titleHtml[key] || config.defaultTitleHtml;
+		}
 		
+		config.rowRenderHtml = this.wrapRowFunction(config, config.rowRenderHtml);
+		for (var key in config.cellRenderHtml) {
+			config.cellRenderHtml[key] = this.wrapCellFunction(config, config.cellRenderHtml[key], key);
+			config.titleHtml[key] = this.wrapTitleFunction(config, config.titleHtml[key], key);
+		}
+
 		if (config.filter) {
 			this.filter = function (data, schemas) {
 				return config.filter(data, schemas);
@@ -42,19 +92,43 @@
 		this.addColumn = function (key, title, renderHtml) {
 			config.columns.push(key);
 			if (typeof title == 'function') {
-				config.titleHtml[key] = title;
-			} else if (title != undefined) {
-				config.titles[key] = title;
+				config.titleHtml[key] = thisRenderer.wrapTitleFunction(config, title, key);
+			} else {
+				if (title != undefined) {
+					config.titles[key] = title;
+				}
+				config.titleHtml[key] = thisRenderer.wrapTitleFunction(config, config.defaultTitleHtml, key);
 			}
-			if (renderHtml) {
-				config.cellRenderHtml[key] = renderHtml;
-			}
+			renderHtml = renderHtml || config.defaultCellRenderHtml;
+			config.cellRenderHtml[key] = thisRenderer.wrapCellFunction(config, renderHtml, key);
 			return this;
 		}
 		
 		this.component = config.component;
 	};
 	TableRenderer.prototype = {
+		wrapRowFunction: function (functionThis, original) {
+			var thisRenderer = this;
+			return function (rowData, context) {
+				var rowContext = thisRenderer.rowContext(rowData, context);
+				return original.call(functionThis, rowData, rowContext);
+			};
+		},
+		wrapTitleFunction: function (functionThis, original, columnKey) {
+			var thisRenderer = this;
+			return function (cellData, context) {
+				var titleContext = context.subContext('title' + columnKey);
+				titleContext.columnPath = titleContext;
+				return original.call(functionThis, cellData, titleContext, columnKey);
+			}
+		},
+		wrapCellFunction: function (functionThis, original, columnKey) {
+			var thisRenderer = this;
+			return function (cellData, context) {
+				var cellContext = thisRenderer.cellContext(cellData, context, columnKey);
+				return original.call(functionThis, cellData, cellContext);
+			}
+		},
 		action: function (context, actionName) {
 			if (context.cellData) {
 				var columnPath = context.columnPath;
@@ -86,46 +160,11 @@
 			return subContext;
 		},
 		renderHtml: function (data, context) {
-			var config = this.config;
-			if (config.renderHtml) {
-				return config.renderHtml(data, context);
-			} else {
-				return config.defaultRenderHtml(data, context);
-			}
+			return this.config.tableRenderHtml(data, context);
 		},
 		rowRenderHtml: function (data, context) {
 			var config = this.config;
-			if (config.rowRenderHtml) {
-				return config.rowRenderHtml(data, context);
-			} else {
-				return config.defaultRowRenderHtml(data, context);
-			}
-		},
-		tableRenderHtml: function (data, context) {
-			var thisRenderer = this;
-			var config = this.config;
-			var result = '';
-			result += '<table class="' + config.classes.table + '">';
-			result += '<thead><tr>';
-			for (var i = 0; i < config.columns.length; i++) {
-				var columnPath = config.columns[i];
-				var titleHtml = config.titleHtml[columnPath] || config.defaultTitleHtml;
-				if (typeof titleHtml == 'function') {
-					var titleContext = context.subContext('title' + columnPath);
-					titleContext.columnPath = titleContext;
-					titleHtml = titleHtml.call(config, data, titleContext, columnPath);
-				}
-				result += titleHtml;
-			}
-			result += '</tr></thead>';
-			result += '<tbody>'
-			data.items(function (index, rowData) {
-				var rowContext = thisRenderer.rowContext(rowData, context);
-				result += thisRenderer.rowRenderHtml(rowData, rowContext);
-			});
-			result += '</tbody>';
-			result += '</table>';
-			return result;
+			return config.rowRenderHtml(data, context);
 		},
 		enhance: function (element, data, context) {
 			if (this.config.enhance) {
@@ -133,14 +172,19 @@
 			} else if (this.config.render) {
 				return this.config.render(element, data, context);
 			}
+		},
+		register: function(filterFunction) {
+			if (filterFunction) {
+				this.filter = filterFunction;
+			}
+			return Jsonary.render.register(this);
 		}
-	};
-	TableRenderer.register = function (obj) {
-		var renderer = new TableRenderer(obj);
-		return Jsonary.render.register(renderer);
 	};
 	
 	function LinkTableRenderer(config) {
+		if (!(this instanceof LinkTableRenderer)) {
+			return new LinkTableRenderer(config);
+		}
 		config = config || {};
 		config.rowRenderHtml = function (data, context) {
 			var result = '';
@@ -296,10 +340,6 @@
 			});
 		}
 		return this;
-	};
-	LinkTableRenderer.register = function (obj) {
-		var renderer = new LinkTableRenderer(obj);
-		return Jsonary.render.register(renderer);
 	};
 	
 	Jsonary.plugins = Jsonary.plugins || {};
