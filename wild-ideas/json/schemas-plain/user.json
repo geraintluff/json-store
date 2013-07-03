@@ -1,0 +1,73 @@
+{
+	"title": "User",
+	"type": "object",
+	"properties": {
+		"id": {
+			"type": "integer",
+			"readOnly": true
+		},
+		"username": {
+			"type": "string",
+			"minLength": 1
+		},
+		"name": {
+			"type": "string",
+			"minLength": 1
+		}
+	},
+	"required": ["id", "username"],
+	"links": [
+		{
+			"href": "{JSON_ROOT}/users/{username}",
+			"rel": "self"
+		},
+		{
+			"href": "{+editUrl}",
+			"rel": "edit"
+		},
+		{
+			"title": "Change password",
+			"href": "{+editUrl}/password",
+			"rel": "action",
+			"method": "POST",
+			"schema": {
+				"type": "object",
+				"properties": {
+					"oldPassword": {
+						"type": "string",
+						"format": "password"
+					},
+					"password": {
+						"type": "string",
+						"format": "password"
+					}
+				},
+				"required": ["oldPassword", "password"],
+				"additionalProperties": false
+			}
+		}
+	],
+	"definitions": {
+		"array": {
+			"type": "array",
+			"items": {"$ref": "#"},
+			"links": [
+				{
+					"href": "",
+					"rel": "create",
+					"schema": {
+						"allOf": [{"$ref": "#"}],
+						"properties": {
+							"id": {"enum": [0]},
+							"password": {
+								"type": "string",
+								"format": "password"
+							}
+						},
+						"required": ["username", "password"]
+					}
+				}
+			]
+		}
+	}
+}

@@ -214,9 +214,47 @@ p {
 	width: 100%;
 }
 
+th {
+	font-size: 0.9em;
+}
+
 .json-array-table > tbody > tr > td, .json-array-table > thead th {
 	text-align: center;
 	border: 1px solid #000;
+}
+
+.json-array-table > thead th a {
+	margin-left: 1em;
+	margin-right: 1em;
+	color: #048;
+	text-shadow: none;
+}
+
+.json-array-table > thead th a:hover {
+	color: #036;
+	text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.3);
+}
+
+.json-array-table-sort-asc, .json-array-table-sort-desc {
+	float: right;
+	width: 0px;
+	padding-left: 20px;
+	margin-left: -20px;
+	overflow: hidden;
+	color: rgba(0, 0, 0, 0.5);
+	background-repeat: no-repeat;
+	background-position: top;
+	border-radius: 10px;
+	background-color: rgba(255, 255, 255, 0.5);
+	box-shadow: 0px 0px 2px #FFF;
+}
+
+.json-array-table-sort-asc {
+	background-image: url('sort-asc.png');
+}
+
+.json-array-table-sort-desc {
+	background-image: url('sort-desc.png');
 }
 
 .json-array-table-full {

@@ -1,5 +1,5 @@
 // Generic renderer for arrays
-// Requires "render.table" and "render.generator" plugins
+// Requires "render.table" and "render.generate" plugins
 Jsonary.render.register(Jsonary.plugins.Generator({
 	rendererForData: function (data) {
 		var renderer = new Jsonary.plugins.LinkTableRenderer();
@@ -34,8 +34,9 @@ Jsonary.render.register(Jsonary.plugins.Generator({
 		function addColumnsFromLink(linkDefinition, index) {
 			var columnName = "link$" + index + "$" + linkDefinition.rel();
 			
-			var columnTitle = Jsonary.escapeHtml(linkDefinition.title || linkDefinition.rel());
-			var linkText = columnTitle;
+			var linkTitle = Jsonary.escapeHtml(linkDefinition.data.get('/title') || linkDefinition.rel());
+			var columnTitle = '';
+			var linkText = linkTitle;
 			var activeText = null, isConfirm = true;
 			if (linkDefinition.rel() == 'edit') {
 				activeText = 'save';

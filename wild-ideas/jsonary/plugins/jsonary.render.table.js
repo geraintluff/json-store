@@ -56,7 +56,13 @@
 		this.config = config;
 		
 		for (var key in tableRendererConfigDefaults) {
-			config[key] = config[key] || tableRendererConfigDefaults[key];
+			if (!config[key]) {
+				if (typeof tableRendererConfigDefaults[key] == "function") {
+					config[key] = tableRendererConfigDefaults[key];
+				} else {
+					config[key] = JSON.parse(JSON.stringify(tableRendererConfigDefaults[key]));
+				}
+			}
 		}
 		
 		config.defaultRowRenderHtml = function (rowData, context) {
@@ -117,8 +123,9 @@
 		wrapTitleFunction: function (functionThis, original, columnKey) {
 			var thisRenderer = this;
 			return function (cellData, context) {
-				var titleContext = context.subContext('title' + columnKey);
-				titleContext.columnPath = titleContext;
+//				var titleContext = context.subContext('title' + columnKey);
+//				titleContext.columnPath = titleContext;
+				var titleContext = context;
 				return original.call(functionThis, cellData, titleContext, columnKey);
 			}
 		},
@@ -146,7 +153,11 @@
 				}
 				return rowAction.apply(this.config, newArgs);
 			}
-			return this.config.action.apply(this.config, arguments);
+			var newArgs = [context.data];
+			while (newArgs.length <= arguments.length) {
+				newArgs.push(arguments[newArgs.length - 1]);
+			}
+			return this.config.action.apply(this.config, newArgs);
 		},
 		rowContext: function (data, context) {
 			var subContext = context.subContext(data);
