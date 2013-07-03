@@ -32,8 +32,7 @@
 
 			<div class="box diagonal-gradient">
 				<div id="jsonary-title" class="title blue-gradient">
-					Loading...
-					<div class="loading"></div>
+					...
 				</div>
 				<div id="jsonary-target">
 					<div class="loading"></div>
@@ -103,6 +102,9 @@
 			});
 			
 			Jsonary.addLinkHandler(function (link, submittedData, request) {
+				// Reduce state to just location
+				delete currentState.ui;
+				window.location.replace('#?' + Jsonary.encodeData(currentState, 'application/x-www-form-urlencoded', 'dotted'));
 				currentState = {
 					ui: {},
 					loc: link.href
