@@ -1,7 +1,13 @@
 <?php
 	include_once 'common.php';
 	include_once 'classes/idea.php';
-
+	include_once 'classes/user.php';
+	
+	$currentUser = User::current();
+	if (!$currentUser) {
+		json_error(403, "Not logged in");
+	}
+	
 	$method = $_SERVER['REQUEST_METHOD'];
 	$jsonData = json_decode(file_get_contents('php://input'));
 	if ($params = matchUriTemplate('/')) {

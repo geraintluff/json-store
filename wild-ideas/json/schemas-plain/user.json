@@ -13,13 +13,43 @@
 		"name": {
 			"type": "string",
 			"minLength": 1
-		}
+		},
+		"editUrl": {"readOnly": true},
+		"logoutUrl": {"readOnly": true}
 	},
 	"required": ["id", "username"],
 	"links": [
 		{
-			"href": "{JSON_ROOT}/users/{username}",
+			"href": "{JSON_ROOT}/users/{id}/",
 			"rel": "self"
+		},
+		{
+			"title": "Log in",
+			"href": "{+loginUrl}",
+			"rel": "login",
+			"method": "POST",
+			"schema": {
+				"type": "object",
+				"properties": {
+					"username": {
+						"type": "string"
+					},
+					"password": {
+						"type": "string",
+						"format": "password"
+					}
+				},
+				"required": ["username", "password"]
+			}
+		},
+		{
+			"title": "Log out",
+			"href": "{+logoutUrl}",
+			"rel": "logout",
+			"method": "POST",
+			"schema": {
+				"type": "null"
+			}
 		},
 		{
 			"href": "{+editUrl}",

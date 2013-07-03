@@ -4,13 +4,15 @@
 		<meta name="viewport" content="width=480" />
 		<link href="jsonary/renderers/common.css" rel="stylesheet"></link>
 		<link href="jsonary/renderers/plain.jsonary.css" rel="stylesheet"></link>
+		<!--<link href="jsonary/plugins/jsonary.render.table.css" rel="stylesheet"></link>-->
 		<link href="style/grass/main.css" rel="stylesheet"></link>
 	</head>
 	<body>
 		<div id="background">
 		</div>
 		<div id="top-bar" class="blue-gradient">
-			<div id="about-us" href="#">powered by <a href="http://jsonary.com/">magic</a></div>
+			<!--<div id="about-us">powered by <a href="http://jsonary.com/">magic</a></div>-->
+			<div id="about-us">logged in as <a id="user-info"><span class="loading"></span></a></div>
 			<h1>Wild Ideas tracker</h1>
 		</div>
 		<div id="content">
@@ -28,8 +30,14 @@
 				<p>It tracks ideas, because why not?
 			</div>
 
-			<div id="jsonary-target">
-				<div class="loading"></div>
+			<div class="box diagonal-gradient">
+				<div id="jsonary-title" class="title blue-gradient">
+					Loading...
+					<div class="loading"></div>
+				</div>
+				<div id="jsonary-target">
+					<div class="loading"></div>
+				</div>
 			</div>
 			
 		<div>
@@ -42,12 +50,80 @@
 		<script src="jsonary/renderers/array-tables.js"></script>
 		<script src="style/renderers/ideas.js"></script>
 		<script>
-			var target = document.getElementById('jsonary-target');
-
-			var renderContext;
-			Jsonary.render(target, 'json/ideas/', {}, function (context) {
-				renderContext = context;
+			Jsonary.getData('json/users/me/', function (data) {
+				var userInfo = document.getElementById('user-info');
+				Jsonary.render(userInfo, data.property('username'));
+				userInfo.setAttribute('href', '#?loc=json/users/me/');
 			});
+		
+			var title = document.getElementById('jsonary-title');
+			var target = document.getElementById('jsonary-target');
+			
+			var currentState = {};
+			if (window.location.hash.charAt(1) == "?") {
+				currentState = Jsonary.decodeData(window.location.hash.substring(2), 'application/x-www-form-urlencoded', 'dotted');
+			}
+			currentState.ui = currentState.ui || {};
+			currentState.loc = currentState.loc || 'json/ideas/';
+
+			var lastFragment = window.location.hash;
+			var renderContext = null;
+			var request = Jsonary.getData(currentState.loc);
+			target.innerHTML = '<div class="loading"></div>';
+			request.getData(function (data) {
+				title.innerHTML = Jsonary.escapeHtml(data.schemas().title() || data.referenceUrl());
+				renderContext = Jsonary.render(target, data, currentState.ui);
+			});
+			setInterval(function () {
+				if (window.location.hash != lastFragment) {
+					lastFragment = window.location.hash;
+					if (lastFragment.charAt(1) == "?") {
+						currentState = Jsonary.decodeData(lastFragment.substring(2), 'application/x-www-form-urlencoded', 'dotted');
+					}
+					currentState.ui = currentState.ui || {};
+					currentState.loc = currentState.loc || 'json/ideas/';
+					var request = Jsonary.getData(currentState.loc);
+					target.innerHTML = '<div class="loading"></div>';
+					request.getData(function (data) {
+						title.innerHTML = Jsonary.escapeHtml(data.schemas().title() || data.referenceUrl());
+						renderContext = Jsonary.render(target, data, currentState.ui);
+					});
+				}
+			}, 100);
+
+			Jsonary.render.addActionHandler(function (data, context, actionName, addToHistory) {
+				currentState.ui = renderContext.saveState();
+				var stateFragment = "#?" + Jsonary.encodeData(currentState, 'application/x-www-form-urlencoded', 'dotted').replace(/%2F/g, '/');
+				lastFragment = stateFragment;
+				if (addToHistory) {
+					window.location.hash = stateFragment;
+				} else {
+					window.location.replace(stateFragment);
+				}
+			});
+			
+			Jsonary.addLinkHandler(function (link, submittedData, request) {
+				currentState = {
+					ui: {},
+					loc: link.href
+				};
+				var baseUrl = window.location.href.split('#')[0].split('/');
+				baseUrl.pop();
+				baseUrl = baseUrl.join('/') + '/';
+				if (link.href.substring(0, baseUrl.length) == baseUrl) {
+					currentState.loc = link.href.substring(baseUrl.length);
+				}
+				var stateFragment = "#?" + Jsonary.encodeData(currentState, 'application/x-www-form-urlencoded', 'dotted').replace(/%2F/g, '/');
+				lastFragment = stateFragment;
+				window.location.hash = stateFragment;
+
+				target.innerHTML = '<div class="loading"></div>';
+				request.getData(function (data) {
+					title.innerHTML = Jsonary.escapeHtml(data.schemas().title() || data.referenceUrl());
+					renderContext = Jsonary.render(target, data, currentState.ui);
+				});
+			});
+			
 		</script>
 	</body>
 </html>

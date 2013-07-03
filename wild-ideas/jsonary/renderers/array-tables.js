@@ -2,7 +2,7 @@
 // Requires "render.table" and "render.generate" plugins
 Jsonary.render.register(Jsonary.plugins.Generator({
 	rendererForData: function (data) {
-		var renderer = new Jsonary.plugins.LinkTableRenderer();
+		var renderer = new Jsonary.plugins.FancyTableRenderer();
 		var columnsObj = {};
 		function addColumnsFromSchemas(schemas, pathPrefix) {
 			schemas = schemas.getFull();
