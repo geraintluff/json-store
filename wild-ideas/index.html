@@ -12,7 +12,7 @@
 		</div>
 		<div id="top-bar" class="blue-gradient">
 			<!--<div id="about-us">powered by <a href="http://jsonary.com/">magic</a></div>-->
-			<div id="about-us">logged in as <a id="user-info"><span class="loading"></span></a></div>
+			<div id="about-us">logged in as <a id="user-info"><span class="loading">&nbsp;</span></a></div>
 			<h1>Wild Ideas tracker</h1>
 		</div>
 		<div id="content">
@@ -87,8 +87,10 @@
 										Jsonary.invalidate(/.*/);
 									}
 								});
+								return false;
 							};
 						});
+						window.location.hash = "#?";
 					} else {
 						loginOverlay.style.display = "none";
 					}

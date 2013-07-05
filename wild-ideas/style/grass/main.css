@@ -202,8 +202,18 @@ h1 {
 	}
 	
 	.loading {
+		margin-top: 0.8em;
 		height: 40px;
 		background-image: url('loading.gif');
+	}
+	
+	span.loading {
+		margin: 0;
+		padding: 0;
+		display: inline-block;
+		height: 15px;
+		width: 20px;
+		background-size: 15px 15px;
 	}
 	
 	#about-us {
