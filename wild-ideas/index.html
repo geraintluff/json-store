@@ -17,7 +17,7 @@
 		</div>
 		<div id="content">
 			<ul id="page-menu" class="gentle-blue-gradient">
-				<li class="current"><a href="#">Menu item 1</a>
+				<li class="current"><a href="#?">Menu item 1</a>
 				<li><a href="#">Second item</a>
 				<li><a href="#">Item #3</a>
 			</ul>
@@ -38,8 +38,17 @@
 					<div class="loading"></div>
 				</div>
 			</div>
-			
-		<div>
+		</div>
+		<div id="login-overlay" style="display: none">
+			<div id="login-box">
+				<div id="login-box-title">Log in</div>
+				<div id="login-box-message"></div>
+				<div id="login-box-params"></div>
+				<div id="login-box-buttons">
+					<a id="login-box-button-login" class="button" href="#">login</a>
+				</div>
+			</div>
+		</div>
 		<script src="jsonary/jsonary.js"></script>
 		<script src="jsonary/plugins/jsonary.undo.js"></script>
 		<script src="jsonary/plugins/jsonary.render.table.js"></script>
@@ -47,12 +56,46 @@
 		<script src="jsonary/renderers/list-links.js"></script>
 		<script src="jsonary/renderers/plain.jsonary.js"></script>
 		<script src="jsonary/renderers/array-tables.js"></script>
+		<script src="jsonary/renderers/string-formats.js"></script>
 		<script src="style/renderers/ideas.js"></script>
 		<script>
 			Jsonary.getData('json/users/me/', function (data) {
 				var userInfo = document.getElementById('user-info');
 				Jsonary.render(userInfo, data.property('username'));
 				userInfo.setAttribute('href', '#?loc=json/users/me/');
+				
+				function updateLoginOverlay() {
+					var loginOverlay = document.getElementById('login-overlay');
+					var loginBox = document.getElementById('login-box-params');
+					var loginMessage = document.getElementById('login-box-message');
+					var loginButton = document.getElementById('login-box-button-login');
+					var loginLink = data.getLink('login');
+					if (loginLink) {
+						loginOverlay.style.display = "block";
+						loginBox.innerHTML = '<div class="loading"></div>';
+						loginButton.style.display = 'none';
+						loginLink.createSubmissionData(function (loginData) {
+							loginButton.style.display = 'block';
+							Jsonary.render(loginBox, loginData);
+							loginButton.onclick = function () {
+								loginBox.innerHTML = '<div class="loading"></div>';
+								loginLink.follow(loginData, false).getData(function (data) {
+									if (data.document.error) {
+										Jsonary.render(loginBox, loginData);
+										loginMessage.innerHTML = Jsonary.escapeHtml(data.get('/message'));
+									} else {
+										Jsonary.invalidate(/.*/);
+									}
+								});
+							};
+						});
+					} else {
+						loginOverlay.style.display = "none";
+					}
+				}
+				
+				data.document.registerChangeListener(updateLoginOverlay);
+				updateLoginOverlay();
 			});
 		
 			var title = document.getElementById('jsonary-title');

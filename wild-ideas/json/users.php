@@ -27,6 +27,7 @@
 			$user = User::openUsername($jsonData->username);
 			if ($user && $user->checkPassword($jsonData->password)) {
 				$user->login();
+				link_header(JSON_ROOT.'/', 'invalidates');
 				json_exit(TRUE);
 			}
 			json_error(401, "Incorrect username/password");
@@ -35,6 +36,7 @@
 	} else if ($params = matchUriTemplate('/logout')) {
 		if ($method == "POST") {
 			User::logout();
+			link_header(JSON_ROOT.'/', 'invalidates');
 			json_exit(TRUE);
 		}
 		json_error(405, "Invalid method: $method", $method);

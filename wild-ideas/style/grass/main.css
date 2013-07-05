@@ -110,6 +110,63 @@ h1 {
 	text-decoration: none;
 }
 
+/** Login overlay **/
+#login-overlay {
+	position: fixed;
+	z-index: 100000;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	background-color: #6F8B51;
+	text-align: center;
+	overflow: auto;
+}
+
+#login-box {
+	position: relative;
+	border: 2px solid black;
+	border-radius: 10px;
+	box-shadow: 0px 0px 50px rgba(210, 255, 200, 0.5);
+	background-color: #F0F8E8;
+	padding: 0.5em;
+	padding-top: 2.8em;
+}
+
+#login-box-title {
+	background-color: #E0E8D8;
+	border-bottom: 2px solid black;
+	border-top-left-radius: 9px;
+	border-top-right-radius: 9px;
+	text-align: center;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	height: 1.5em;
+	margin-bottom: 0.5em;
+	padding: 0.2em;
+	font-size: 1.1em;
+	font-weight: bold;
+}
+
+#login-box-message {
+	font-weight: bold;
+	color: #800;
+}
+
+#login-box-buttons {
+	margin-top: 0.3em;
+}
+
+#login-box-buttons .button {
+	padding: 0.2em;
+	border-color: #000;
+	color: #000;
+}
+
+#login-box
+
 @media screen and (min-width: 750px) {
 	body {
 		background-image: url('background.jpg');
@@ -126,6 +183,17 @@ h1 {
 	body {
 		background-color: #6F8B51;
 	}
+
+	#login-overlay {
+		padding-top: 100px;
+		opacity: 0.97;
+	}
+	
+	#login-box {
+		width: 400px;
+		margin: auto;
+	}
+	
 	
 	h1 {
 		text-align: center;
