@@ -309,7 +309,14 @@
 	FancyTableRenderer.defaults = {
 		sort: {},
 		defaultSort: function (a, b) {
-			return (a > b) ? 1 : ((a < b) ? -1 : 0);
+			if (a == null) {
+				return (b == null) ? 0 : -1;
+			} else if (b == null || a > b) {
+				return 1;
+			} else if (a < b) {
+				return -1;
+			}
+			return 0;
 		},
 		rowOrder: function (data, context) {
 			var thisConfig = this;
