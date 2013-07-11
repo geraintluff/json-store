@@ -30,6 +30,9 @@ class JsonSchema extends StdClass {
 		if (in_array($key, self::$subSchemaProperties)) {
 			$this->$key = new JsonSchema();
 		} else if (in_array($key, self::$subSchemaObjectProperties)) {
+			if ($key == "properties" && !isset($this->type)) {
+				$this->type = "object";
+			}
 			$this->$key = new JsonSchemaMap();
 		}
 		return $this->$key;
@@ -58,6 +61,8 @@ class JsonSchemaMap {
 
 /** Full search, from a schema **/
 class JsonStoreSearch {
+	static public $INCOMPLETE_TAG = "incom`'plete"; // Sequence which can only occur in a comment, never a value or table/column name
+
 	public function __construct($config, $schema, $path="") {
 		$this->config = $config;
 		$this->schema = $schema;
@@ -179,7 +184,7 @@ class JsonStoreSearch {
 		}
 
 		$unknownKeywords = array_keys(get_object_vars($schema));
-		$prefix = count($unknownKeywords) ? "/* Unknown schema keywords: ".implode(", ", $unknownKeywords)." */ " : "";
+		$prefix = count($unknownKeywords) ? "/* ".JsonStoreSearch::$INCOMPLETE_TAG.": Unknown schema keywords: ".implode(", ", $unknownKeywords)." */ " : "";
 		if ($inverted) {
 			return $prefix.$constraints->mysqlQueryNot($tableName);
 		} else {
@@ -301,7 +306,7 @@ class JsonStoreSearchAnyOf {
 			return $this->options[0]->mysqlQuery($tableName);
 		} else {
 			$options = array();
-			foreach ($this->options as $options) {
+			foreach ($this->options as $option) {
 				$options[] = $option->mysqlQuery($tableName);
 			}
 			return "(".implode(" OR ", $options).")";
@@ -350,7 +355,7 @@ abstract class JsonStoreSearchConstraint {
 	}
 	
 	public function mysqlQueryNot($tableName) {
-		return " /* Warning: falling back to NOT() clause */ NOT (".$this->mysqlQuery($tableName).")";
+		return " /* ".JsonStoreSearch::$INCOMPLETE_TAG.": Warning: falling back to NOT() clause */ NOT (".$this->mysqlQuery($tableName).")";
 	}
 	
 	abstract public function mysqlQuery($tableName);
@@ -372,11 +377,11 @@ class JsonStoreSearchEnum extends JsonStoreSearchConstraint {
 			} else if ($this->hasColumn('string', $path) && is_string($enumValue)) {
 				$options[] .= $this->tableColumn($tableName, 'string', $path)." = '".JsonStore::mysqlEscape($enumValue)."'";
 			} else {
-				return "1 /* can't check enum properly (value ".json_encode($enumValue)." at: $path)*/";
+				return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check enum properly (value ".json_encode($enumValue)." at: $path)*/";
 			}
 		}
 		if (count($options) == 0) {
-			return "0";
+			return "0 /* no options for enum */";
 		} else if (count($options) == 1) {
 			return $options[0];
 		}
@@ -398,7 +403,7 @@ class JsonStoreSearchEnum extends JsonStoreSearchConstraint {
 			} else if ($this->hasColumn('json', $path)) {
 				$options[] .= "NOT (".$this->tableColumn($tableName, 'json', $path)." = '".JsonStore::mysqlEscape(json_encode($enumValue))."')";
 			} else {
-				return "1 /* can't check enum properly (value ".json_encode($enumValue)." at: $path)*/";
+				return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check enum properly (value ".json_encode($enumValue)." at: $path)*/";
 			}
 		}
 		if (count($options) == 0) {
@@ -446,7 +451,7 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				} else if ($type == "null") {
 					$options[] = $this->tableColumn($tableName, 'json', $path)." = 'null'";
 				} else {
-					return "1 /* unknown value for \"type\" (value ".json_encode($type)." at: $path)*/";
+					return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": unknown value for \"type\" (value ".json_encode($type)." at: $path)*/";
 				}
 			} else if ($type == "object") {
 				// If the object has known properties, assume that any object would have at least one of them
@@ -456,14 +461,14 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 						$options[] = $this->tableColumn($tableName, $columnName)." IS NOT NULL";
 					}
 				} else {
-					return "1 /* can't check type properly (value ".json_encode($type)." at: $path)*/";
+					return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check type properly (value ".json_encode($type)." at: $path)*/";
 				}
 			} else {
-				return "1 /* can't check type properly (value ".json_encode($type)." at: $path)*/";
+				return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check type properly (value ".json_encode($type)." at: $path)*/";
 			}
 		}
 		if (count($options) == 0) {
-			return "0";
+			return "0 /* no types */";
 		} else if (count($options) == 1) {
 			return $options[0];
 		}
@@ -484,11 +489,11 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				continue;
 			}
 			if ($type == "number" && $this->hasColumn('number', $path)) {
-				$options[] = $this->tableColumn($tableName, 'number', $path)." IS NULL";
+				$andOptions[] = $this->tableColumn($tableName, 'number', $path)." IS NULL";
 			} else if ($type == "integer" && $this->hasColumn('integer', $path)) {
-				$options[] = $this->tableColumn($tableName, 'integer', $path)." IS NULL";
+				$andOptions[] = $this->tableColumn($tableName, 'integer', $path)." IS NULL";
 			} else if ($type == "integer" && $this->hasColumn('number', $path)) {
-				$options[] = "(".$this->tableColumn($tableName, 'number', $path)." IS NULL OR MOD(".$this->tableColumn($tableName, 'number', $path).", 1) <> 0)";
+				$andOptions[] = "(".$this->tableColumn($tableName, 'number', $path)." IS NULL OR MOD(".$this->tableColumn($tableName, 'number', $path).", 1) <> 0)";
 			} else if ($columns['json'.$path]) {
 				if ($type == "object") {
 					$andOptions[] = "NOT(".$this->tableColumn($tableName, 'json', $path)." LIKE '{%')";
@@ -506,7 +511,7 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				} else if ($type == "null") {
 					$andOptions[] = "NOT(".$this->tableColumn($tableName, 'json', $path)." = 'null')";
 				} else {
-					return "1 /* unknown value for \"type\" (value ".json_encode($type)." at: $path)*/";
+					return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": unknown value for \"type\" (value ".json_encode($type)." at: $path)*/";
 				}
 			} else if ($type == "object") {
 				// If the object has known properties, assume that any object would have at least one of them
@@ -516,14 +521,14 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 						$andOptions[] = $this->tableColumn($tableName, $columnName)." IS NULL";
 					}
 				} else {
-					return "1 /* can't check type properly (value ".json_encode($type)." at: $path)*/";
+					return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check type properly (value ".json_encode($type)." at: $path)*/";
 				}
 			} else {
-				return "1 /* can't check type properly (value ".json_encode($type)." at: $path)*/";
+				return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check type properly (value ".json_encode($type)." at: $path)*/";
 			}
 		}
 		if (count($andOptions) == 0) {
-			return "0";
+			return "1 /* no types */";
 		} else if (count($andOptions) == 1) {
 			return $andOptions[0];
 		}
@@ -548,7 +553,7 @@ class JsonStoreSearchMinimum extends JsonStoreSearchConstraint {
 		} else if ($this->values->numberType == "integer" && $this->hasColumn('integer', $path)) {
 			$column = $this->tableColumn($tableName, 'integer', $path);
 		} else {
-			return "1 /* can't check numerical ({$this->values->numberType}) limits at $path */";
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 		}
 		if ($this->values->exclusive) {
 			return "$column > $value";
@@ -561,7 +566,7 @@ class JsonStoreSearchMinimum extends JsonStoreSearchConstraint {
 		if ($this->hasColumn('number', $path) || ($this->values->numberType == "integer" && $this->tableColumn($tableName, 'number', $path))) {
 			return parent::mysqlQueryNot($tableName);
 		}
-		return "1 /* can't check numerical ({$this->values->numberType}) limits at $path */";
+		return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 	}
 }
 
@@ -583,7 +588,7 @@ class JsonStoreSearchMaximum extends JsonStoreSearchConstraint {
 		} else if ($this->values->numberType == "integer" && $this->hasColumn('integer', $path)) {
 			$column = $this->tableColumn($tableName, 'integer', $path);
 		} else {
-			return "1 /* can't check numerical ({$this->values->numberType}) limits at $path */";
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 		}
 		if ($this->values->exclusive) {
 			return "$column < $value";
@@ -596,7 +601,7 @@ class JsonStoreSearchMaximum extends JsonStoreSearchConstraint {
 		if ($this->hasColumn('number', $path) || ($this->values->numberType == "integer" && $this->tableColumn($tableName, 'number', $path))) {
 			return parent::mysqlQueryNot($tableName);
 		}
-		return "1 /* can't check numerical ({$this->values->numberType}) limits at $path */";
+		return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 	}
 }
 

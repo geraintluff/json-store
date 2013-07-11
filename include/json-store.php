@@ -1,6 +1,7 @@
 <?php
 
 include_once(dirname(__FILE__).'/json-store-search.php');
+include_once(dirname(__FILE__).'/jsv4.php');
 
 class JsonStorePendingArray {
 	static private $queue = array();
@@ -42,6 +43,8 @@ class JsonStorePendingArray {
 }
 
 class JsonStore {
+	static public $problemSchemasFile = NULL;
+
 	static public function executePending() {
 		JsonStorePendingArray::executePending();
 	}
@@ -358,6 +361,35 @@ class JsonStore {
 		return $config;
 	}
 	
+	static public function schemaSearch($configName, $schemaObj, $orderBy=NULL) {
+		$config = self::$mysqlConfigs[$configName];
+		$search = new JsonStoreSearch($config, $schemaObj);
+		$sql = $search->mysqlQuery(NULL, $orderBy);
+		
+		$results = self::mysqlQuery($sql);
+		foreach ($results as $index => $item) {
+			$results[$index] = self::loadObject($item, $config, TRUE);
+		}
+		self::executePending();
+		
+		if (strpos($sql, JsonStoreSearch::$INCOMPLETE_TAG)) {
+			if (self::$problemSchemasFile) {
+				$data = date('r')."\n\nConfig: $configName\n\nSchema:\n".json_encode($schemaObj)."\n\nQuery:\n".$sql;
+				file_put_contents(self::$problemSchemasFile, $data);
+			}
+			$newResults = array();
+			foreach ($results as $item) {
+				$validation = Jsv4::validate($item, $schemaObj);
+				if ($validation->valid) {
+					$newResults[] = $item;
+				}
+			}
+			return $newResults;
+		} else {
+			return $results;
+		}
+	}
+	
 	static public function queryFromSchema($className, $schema, $orderBy=NULL) {
 		$config = self::$mysqlConfigs[$className];
 		$search = new JsonStoreSearch($config, $schema);
@@ -434,7 +466,7 @@ class JsonStore {
 		$path = count($parts) > 1 ? '/'.$parts[1] : '';
 		$value = self::pointerGet($target, $path);
 		if ($value instanceof JsonStore && $path != "") {
-			return "WHAT WHAT WHAT";
+			throw new Exception("JsonStore objects cannot contain each other");
 		}
 		if ($type == "json") {
 			return "'".self::mysqlEscape(json_encode($value))."'";
