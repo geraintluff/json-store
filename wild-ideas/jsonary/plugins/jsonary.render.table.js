@@ -411,7 +411,7 @@
 			var page = context.uiState.page || 0;
 			var pageRows = pages[page];
 			if (!pageRows) {
-				pageRows = pages[0];
+				pageRows = pages[0] || [];
 				context.uiState.page = 0;
 			}
 			for (var i = 0; i < pageRows.length; i++) {

@@ -5,7 +5,8 @@
 	
 	$currentUser = User::current();
 	if (!$currentUser) {
-		json_error(403, "Not logged in");
+		// Not permissioned to see anything
+		json_exit($ideas, SCHEMA_ROOT.'/idea#/definitions/array');
 	}
 	
 	$method = $_SERVER['REQUEST_METHOD'];

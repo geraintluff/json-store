@@ -127,14 +127,14 @@ h1 {
 	position: relative;
 	border: 2px solid black;
 	border-radius: 10px;
-	box-shadow: 0px 0px 50px rgba(210, 255, 200, 0.5);
+	box-shadow: 0px 0px 20px rgba(210, 255, 200, 0.3), 0px 0px 50px rgba(210, 255, 200, 0.3);
 	background-color: #F0F8E8;
 	padding: 0.5em;
-	padding-top: 2.8em;
+	padding-top: 2.5em;
 }
 
 #login-box-title {
-	background-color: #E0E8D8;
+	background-color: #B0B8A8;
 	border-bottom: 2px solid black;
 	border-top-left-radius: 9px;
 	border-top-right-radius: 9px;
@@ -143,11 +143,13 @@ h1 {
 	left: 0;
 	right: 0;
 	top: 0;
-	height: 1.5em;
+	height: 1.3em;
 	margin-bottom: 0.5em;
 	padding: 0.2em;
 	font-size: 1.1em;
 	font-weight: bold;
+	text-shadow: 0px 0px 5px rgba(255, 255, 255, 0.3);
+	box-shadow: 0px 0px 2px rgba(0, 0, 0, 0.5);
 }
 
 #login-box-message {
@@ -163,9 +165,8 @@ h1 {
 	padding: 0.2em;
 	border-color: #000;
 	color: #000;
+	box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.3);
 }
-
-#login-box
 
 @media screen and (min-width: 750px) {
 	body {
