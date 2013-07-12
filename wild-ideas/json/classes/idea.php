@@ -2,7 +2,9 @@
 
 include_once dirname(__FILE__).'/../common.php';
 
-class Idea extends JsonStore {
+require_once dirname(__FILE__).'/idea.gen.php';
+
+class Idea extends Idea_gen {
 	static public function search($schema=NULL, $orderBy=NULL) {
 		if (!$schema) {
 			$schema = new StdClass;

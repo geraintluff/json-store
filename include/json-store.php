@@ -361,6 +361,10 @@ class JsonStore {
 		return $config;
 	}
 	
+	static public function getMysqlConfig($className) {
+		return self::$mysqlConfigs[$className];
+	}
+	
 	static public function schemaSearch($configName, $schemaObj, $orderBy=NULL) {
 		$config = self::$mysqlConfigs[$configName];
 		$search = new JsonStoreSearch($config, $schemaObj);
