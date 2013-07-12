@@ -73,8 +73,8 @@ You'll need to include `include/json-store.php`.
 You then just subclass `JsonStore`.  The rules are:
 
 *	The constructor takes either:
-**	an associative array representing the database row (as returned by `$mysqli->fetch_assoc()` or `JsonStore::mysqlQuery()`)
-**	a plain object
+    *	an associative array representing the database row (as returned by `$mysqli->fetch_assoc()` or `JsonStore::mysqlQuery()`)
+    *	a plain object
 *	You then make a call to `JsonStore::addMysqlConfig`, looking something like this:
 
 ```php
