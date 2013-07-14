@@ -1,4 +1,5 @@
 <?php
+	// Just a little helper script to set up classes/tables
 
 	$jsonStorePath = "../include/json-store.php";
 	$classes = array(
@@ -45,6 +46,112 @@
 
 <?php
 
+$mysqlTypeMap = array(
+	"json" => "TEXT",
+	"string" => "TEXT",
+	"integer" => "INT(11)",
+	"boolean" => "TINYINT(11)",
+	"number" => "FLOAT"
+);
+
+function checkConfig($config, $isArray=FALSE, $parentType=NULL) {
+	global $mysqlTypeMap;
+	$columns = array();
+	if ($isArray) {
+		$groupColumn = (isset($config['alias']) && isset($config['alias']['group'])) ? $config['alias']['group'] : 'group';
+		$indexColumn = (isset($config['alias']) && isset($config['alias']['group'])) ? $config['alias']['index'] : 'index';
+		if (!$parentType) {
+			$columns[$groupColumn] = JsonStore::escapedColumn($groupColumn)." INT(11) AUTO_INCREMENT COMMENT 'Array ID (generated)'";
+		} else if(isset($mysqlTypeMap[$type])) {
+			$type = $mysqlTypeMap[$type];
+			$columns[$groupColumn] = JsonStore::escapedColumn($groupColumn)." {$type} COMMENT 'Link to parent'";
+		} else {
+			$type = "INT(11) /*$type*/";
+			$columns[$groupColumn] = JsonStore::escapedColumn($groupColumn)." {$type} COMMENT 'Link to parent'";
+		}
+		$columns[$indexColumn] = JsonStore::escapedColumn($indexColumn)." INT(11) COMMENT 'Array index'";
+	}
+	foreach ($config['columns'] as $columnSpec => $columnName) {
+		$subConfig = $columnName;
+		if (is_numeric($columnSpec)) {
+			$columnSpec = $columnName;
+		}
+		if (isset($config['alias']) && isset($config['alias'][$columnName])) {
+			$columnName = $config['alias'][$columnName];
+		}
+		$parts = explode("/", $columnSpec, 2);
+		$type = $parts[0];
+		$path = substr($columnSpec, strlen($type));
+		$comment = $columnSpec;
+		if ($type == "array") {
+			$parentKeyType = NULL;
+			if (isset($subConfig['parentKey'])) {
+				foreach ($config['columns'] as $cs => $cn) {
+					if (is_numeric($cs)) {
+						$cs = $cn;
+					}
+					if ($cn == $subConfig['parentKey']) {
+						$keyParts = explode("/", $cs, 2);
+						$keyType = $keyParts[0];
+						$parentKeyType = $keyType;
+					}
+				}
+				foreach ($config['alias'] as $cs => $cn) {
+					if ($cn == $subConfig['parentKey']) {
+						$keyParts = explode("/", $cs, 2);
+						$keyType = $keyParts[0];
+						$parentKeyType = $keyType;
+					}
+				}
+				checkConfig($subConfig, TRUE, $parentKeyType);
+				continue;
+			} else {
+				checkConfig($subConfig, TRUE, NULL);
+				$type == " INT(11)";
+			}
+		} else if(isset($mysqlTypeMap[$type])) {
+			$type = $mysqlTypeMap[$type];
+		} else {
+			$type = "TEXT /*$type*/";
+		}
+		if ($columnSpec == $config['keyColumn']) {
+			$columns[$columnName] = JsonStore::escapedColumn($columnName)." {$type} AUTO_INCREMENT PRIMARY KEY COMMENT ".JsonStore::mysqlQuote($comment);
+		} else {
+			$columns[$columnName] = JsonStore::escapedColumn($columnName)." {$type} NULL COMMENT ".JsonStore::mysqlQuote($comment);
+		}
+	}
+	
+	if (isset($_POST['create-tables'])) {
+		$sql = "CREATE TABLE IF NOT EXISTS {$config['table']} (";
+		$sql .= "\n\t".implode(",\n\t", $columns)."\n)";
+		echo "$sql;\n";
+		JsonStore::mysqlQuery($sql);
+	}
+	$result = JsonStore::mysqlQuery("SHOW COLUMNS FROM {$config['table']}");
+	$observedColumns = array();
+	foreach ($result as $column) {
+		$observedColumns[$column['Field']] = $column;
+	}
+	if (isset($_POST['update-tables-add'])) {
+		foreach ($columns as $columnName => $column) {
+			if (!isset($observedColumns[$columnName])) {
+				$sql = "ALTER TABLE {$config['table']}\n\tADD COLUMN ".$column;
+				echo "$sql;\n";
+				JsonStore::mysqlQuery($sql);
+			}
+		}
+	}
+	if (isset($_POST['update-tables-delete'])) {
+		foreach ($observedColumns as $columnName => $column) {
+			if (!isset($columns[$columnName])) {
+				$sql = "ALTER TABLE {$config['table']}\n\tDROP COLUMN ".$columnName;
+				echo "$sql;\n";
+				JsonStore::mysqlQuery($sql);
+			}
+		}
+	}
+}
+
 if (isset($_POST['setup'])) {
 	echo '<pre>';
 
@@ -60,7 +167,9 @@ if (isset($_POST['setup'])) {
 			$thisFileParts[count($thisFileParts) - 1] = "";
 			$includePath = str_repeat("../", count($filenameParts)) . implode("/", $thisFileParts) . $jsonStorePath;
 		
-			$result = isset($_POST['create-classes']) && file_put_contents($filename, '<?php
+			$result = NULL;
+			if (isset($_POST['create-classes'])) {
+				file_put_contents($filename, '<?php
 require_once dirname(__FILE__).\'/'.str_replace("'", '\\\'', $includePath) . '\';
 
 class '.$className.' extends JsonStore {
@@ -74,6 +183,8 @@ JsonStore::addMysqlConfig('.json_encode($className).', array(
 	)
 ));
 ?>');
+				echo "Created: $filename\n";
+			}
 			if (!$result) {
 				echo '<div class="error">File not found: <code>'.htmlentities($filename).'</code></div>';
 				continue;
@@ -150,7 +261,10 @@ class '.$className.'_gen extends JsonStore {
 	}
 }
 ?>') && file_put_contents($filename, $code);
+			echo "Generated: $genFilename\n";
 		}
+
+		checkConfig($config);		
 	}
 	echo "\nDone.";
 	echo '</pre>';
@@ -166,16 +280,15 @@ class '.$className.'_gen extends JsonStore {
 		<label>Update newclasses: <input type="checkbox" name="update-classes" checked></input></label>
 	</fieldset>
 	
-	<!--
 	<fieldset>
 		<legend>MySQL structure</legend>
 		
 		<label>Create new tables: <input type="checkbox" name="create-tables" checked></input></label>
 		<br>
-		<label>Add columns to existing tables: <input type="checkbox" name="update-tables" checked></input></label>
+		<label>Add columns to existing tables: <input type="checkbox" name="update-tables-add" checked></input></label>
 		<br>
-		<label>Delete columns from existing tables: <input type="checkbox" name="update-tables" checked></input></label>
+		<label>Delete columns from existing tables: <input type="checkbox" name="update-tables-delete" checked></input></label>
 	</fieldset>
-	-->
+
 	<input type="submit" name="setup" value="GO"></input>
 </form>
