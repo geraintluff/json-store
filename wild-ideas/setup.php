@@ -277,7 +277,7 @@ class '.$className.'_gen extends JsonStore {
 
 		<label>Create new classes: <input type="checkbox" name="create-classes" checked></input></label>
 		<br>
-		<label>Update newclasses: <input type="checkbox" name="update-classes" checked></input></label>
+		<label>Update existing classes: <input type="checkbox" name="update-classes" checked></input></label>
 	</fieldset>
 	
 	<fieldset>

@@ -1,4 +1,9 @@
 (function (global) {
+	function getHash() {
+		var index = window.location.href.indexOf('#');
+		return (index == -1) ? "#" : window.location.href.substring(index);
+	}
+
 	var hashJsonaryData = Jsonary.create(null);
 
 	var addHistoryPoint = false;
@@ -9,7 +14,7 @@
 	var ignoreUpdates = false;
 	var lastHash = null;
 	function updateHash() {
-		var hashString = window.location.hash;
+		var hashString = getHash();
 		if (hashString.length > 0 && hashString.charAt(0) == "#") {
 			hashString = hashString.substring(1);
 		}
