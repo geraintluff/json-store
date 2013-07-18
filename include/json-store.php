@@ -87,6 +87,10 @@ class JsonStore {
 		return self::$mysqlConnector->quote($value);
 	}
 	
+	static public function mysqlQuote($value) {
+		return self::$mysqlConnector->quote($value);
+	}
+	
 	static private $mysqlConnector = NULL;
 	static public function setConnection($connectionObj) {
 		self::$mysqlConnector = $connectionObj;
@@ -737,10 +741,6 @@ abstract class JsonStoreConnection {
 
 	abstract public function query($sql);
 	abstract public function escape($value);
-<<<<<<< HEAD
-=======
-	
->>>>>>> 7ead51dfc75641ac5f8a7abe5607c8d792687156
 	public function quote($value) {
 		return "'".$this->escape($value)."'";
 	}
