@@ -83,6 +83,10 @@ class JsonStore {
 		return self::$mysqlConnector->quote($value);
 	}
 	
+	static public function mysqlQuote($value) {
+		return self::$mysqlConnector->quote($value);
+	}
+	
 	static private $mysqlConnector = NULL;
 	static public function setConnection($connectionObj) {
 		self::$mysqlConnector = $connectionObj;
@@ -116,8 +120,8 @@ class JsonStore {
 		return $result;
 	}
 	
-	public static function escapedColumn($columnName, $config) {
-		if (isset($config['alias'][$columnName])) {
+	public static function escapedColumn($columnName, $config=NULL) {
+		if ($config && isset($config['alias'][$columnName])) {
 			$columnName = $config['alias'][$columnName];
 		}
 		if ($columnName[0] != "`") {
@@ -733,6 +737,10 @@ abstract class JsonStoreConnection {
 
 	abstract public function query($sql);
 	abstract public function escape($value);
+<<<<<<< HEAD
+=======
+	
+>>>>>>> 7ead51dfc75641ac5f8a7abe5607c8d792687156
 	public function quote($value) {
 		return "'".$this->escape($value)."'";
 	}
