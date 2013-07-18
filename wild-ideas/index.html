@@ -50,6 +50,9 @@
 			</div>
 		</div>
 		<script src="jsonary/jsonary.js"></script>
+		<!--
+		<script src="/jsonary/jsonary.js.php"></script>
+		-->
 		<script src="jsonary/plugins/jsonary.undo.js"></script>
 		<script src="jsonary/plugins/jsonary.render.table.js"></script>
 		<script src="jsonary/plugins/jsonary.render.generate.js"></script>
@@ -90,7 +93,7 @@
 								return false;
 							};
 						});
-						window.location.hash = "#?";
+						window.location.href = "#?";
 					} else {
 						loginOverlay.style.display = "none";
 					}
@@ -99,28 +102,33 @@
 				data.document.registerChangeListener(updateLoginOverlay);
 				updateLoginOverlay();
 			});
+			
+			function getHash() {
+				var index = window.location.href.indexOf('#');
+				return (index == -1) ? "#" : window.location.href.substring(index);
+			}
 		
 			var title = document.getElementById('jsonary-title');
 			var target = document.getElementById('jsonary-target');
 			
 			var currentState = {};
-			if (window.location.hash.charAt(1) == "?") {
-				currentState = Jsonary.decodeData(window.location.hash.substring(2), 'application/x-www-form-urlencoded', 'dotted');
+			if (getHash().charAt(1) == "?") {
+				currentState = Jsonary.decodeData(getHash().substring(2), 'application/x-www-form-urlencoded', 'dotted');
 			}
 			currentState.ui = currentState.ui || {};
 			currentState.loc = currentState.loc || 'json/ideas/';
 
-			var lastFragment = window.location.hash;
+			var lastFragment = getHash();
 			var renderContext = null;
 			var request = Jsonary.getData(currentState.loc);
 			target.innerHTML = '<div class="loading"></div>';
+			renderContext = Jsonary.render(target, request, currentState.ui);
 			request.getData(function (data) {
 				title.innerHTML = Jsonary.escapeHtml(data.schemas().title() || data.referenceUrl());
-				renderContext = Jsonary.render(target, data, currentState.ui);
 			});
 			setInterval(function () {
-				if (window.location.hash != lastFragment) {
-					lastFragment = window.location.hash;
+				if (getHash() != lastFragment) {
+					lastFragment = getHash();
 					if (lastFragment.charAt(1) == "?") {
 						currentState = Jsonary.decodeData(lastFragment.substring(2), 'application/x-www-form-urlencoded', 'dotted');
 					}
@@ -140,7 +148,7 @@
 				var stateFragment = "#?" + Jsonary.encodeData(currentState, 'application/x-www-form-urlencoded', 'dotted').replace(/%2F/g, '/');
 				lastFragment = stateFragment;
 				if (addToHistory) {
-					window.location.hash = stateFragment;
+					window.location.href = stateFragment;
 				} else {
 					window.location.replace(stateFragment);
 				}
@@ -162,7 +170,7 @@
 				}
 				var stateFragment = "#?" + Jsonary.encodeData(currentState, 'application/x-www-form-urlencoded', 'dotted').replace(/%2F/g, '/');
 				lastFragment = stateFragment;
-				window.location.hash = stateFragment;
+				window.location.href = stateFragment;
 
 				target.innerHTML = '<div class="loading"></div>';
 				request.getData(function (data) {

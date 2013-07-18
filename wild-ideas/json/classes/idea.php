@@ -62,7 +62,9 @@ JsonStore::addMysqlConfig('Idea', array(
 	"keyColumn" => "integer/id",
 	"columns" => array(
 		"json" => "json",
-		"integer/id" => "id"
+		"integer/id" => "id",
+		"string/title" => "title",
+		"string/feasibility" => "feasibility"
 	)
 ));
 
