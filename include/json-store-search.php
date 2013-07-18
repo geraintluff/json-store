@@ -30,8 +30,10 @@ class JsonSchema extends StdClass {
 		if (in_array($key, self::$subSchemaProperties)) {
 			$this->$key = new JsonSchema();
 		} else if (in_array($key, self::$subSchemaObjectProperties)) {
-			if ($key == "properties" && !isset($this->type)) {
-				$this->type = "object";
+			if (!isset($this->type)) {
+				if ($key == "properties") {
+					$this->type = "object";
+				}
 			}
 			$this->$key = new JsonSchemaMap();
 		}
@@ -45,6 +47,12 @@ class JsonSchema extends StdClass {
 			}
 		} else if (in_array($key, self::$subSchemaProperties)) {
 			$value = new JsonSchema($value);
+		} else {
+			if (!isset($this->type)) {
+				if ($key == "pattern") {
+					$this->type = "string";
+				}
+			}
 		}
 		$this->$key = $value;
 	}
@@ -141,6 +149,25 @@ class JsonStoreSearch {
 				$propertyConstraints->add(new JsonStoreSearch($this->config, $subSchema, $path));
 			}
 			unset($schema->properties);
+		}
+		if (isset($schema->pattern)) {
+			$stringConstraints = new JsonStoreSearchAnd();
+			if (isset($schema->type)) {
+				$stringIndex = array_search("string", $schema->type);
+				if ($stringIndex !== FALSE) {
+					// The string constraints will also constitute a type-check
+					$schema->type[$stringIndex] = $stringConstraints;
+				}
+			} else {
+				$or = new JsonStoreSearchOr();
+				$or->add($stringConstraints);
+				$or->add(new JsonStoreSearchNot(new JsonStoreSearchType($this->config, array("string"), $this->path)));
+				$constraints->add($or);
+			}
+			if (isset($schema->pattern)) {
+				$stringConstraints->add(new JsonStoreSearchPattern($this->config, $schema->pattern, $this->path));
+				unset($schema->pattern);
+			}
 		}
 		if (isset($schema->minimum) || isset($schema->maximum)) {
 			$numberConstraints = new JsonStoreSearchAnd();
@@ -428,7 +455,11 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				$options[] = $type->mysqlQuery($tableName);
 				continue;
 			}
-			if ($type == "number" && $this->hasColumn('number', $path)) {
+			if ($type == "boolean" && $this->hasColumn('boolean', $path)) {
+				$options[] = $this->tableColumn($tableName, 'boolean', $path)." IS NOT NULL";
+			} else if ($type == "string" && $this->hasColumn('string', $path)) {
+				$options[] = $this->tableColumn($tableName, 'string', $path)." IS NOT NULL";
+			} else if ($type == "number" && $this->hasColumn('number', $path)) {
 				$options[] = $this->tableColumn($tableName, 'number', $path)." IS NOT NULL";
 			} else if ($type == "integer" && $this->hasColumn('integer', $path)) {
 				$options[] = $this->tableColumn($tableName, 'integer', $path)." IS NOT NULL";
@@ -488,7 +519,11 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				$andOptions[] = $type->mysqlQueryNot($tableName);
 				continue;
 			}
-			if ($type == "number" && $this->hasColumn('number', $path)) {
+			if ($type == "boolean" && $this->hasColumn('boolean', $path)) {
+				$andOptions[] = $this->tableColumn($tableName, 'boolean', $path)." IS NULL";
+			} else if ($type == "string" && $this->hasColumn('string', $path)) {
+				$andOptions[] = $this->tableColumn($tableName, 'string', $path)." IS NULL";
+			} else if ($type == "number" && $this->hasColumn('number', $path)) {
 				$andOptions[] = $this->tableColumn($tableName, 'number', $path)." IS NULL";
 			} else if ($type == "integer" && $this->hasColumn('integer', $path)) {
 				$andOptions[] = $this->tableColumn($tableName, 'integer', $path)." IS NULL";
@@ -602,6 +637,27 @@ class JsonStoreSearchMaximum extends JsonStoreSearchConstraint {
 			return parent::mysqlQueryNot($tableName);
 		}
 		return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
+	}
+}
+
+class JsonStoreSearchPattern extends JsonStoreSearchConstraint {
+	public function mysqlQuery($tableName) {
+		$path = $this->path;
+		$pattern = $this->values;
+		
+		if ($this->hasColumn('string', $path)) {
+			$column = $this->tableColumn($tableName, 'string', $path);
+		} else {
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check string pattern at $path */";
+		}
+		return "$column REGEXP ".JsonStore::mysqlQuote($pattern);
+	}
+	public function mysqlQueryNot($tableName) {
+		if ($this->hasColumn('string', $path)) {
+			return parent::mysqlQueryNot($tableName);
+		} else {
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check string pattern at $path */";
+		}
 	}
 }
 
