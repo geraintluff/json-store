@@ -83,14 +83,6 @@ class JsonStore {
 		return self::$mysqlConnector->quote($value);
 	}
 	
-	static public function mysqlQuote($value) {
-		return self::$mysqlConnector->quote($value);
-	}
-	
-	static public function mysqlQuote($value) {
-		return self::$mysqlConnector->quote($value);
-	}
-	
 	static private $mysqlConnector = NULL;
 	static public function setConnection($connectionObj) {
 		self::$mysqlConnector = $connectionObj;
