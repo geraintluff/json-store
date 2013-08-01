@@ -199,7 +199,12 @@ class JsonStore {
 			$path = count($parts) > 1 ? '/'.$parts[1] : '';
 			$path = $pathPrefix.$path;
 			if ($type == "json") {
-				self::pointerMerge($result, $path, json_decode($value));
+				$jsonValue = json_decode($value);
+				if ($jsonValue == NULL && $value != 'null') {
+					// Invalid JSON
+					continue;
+				}
+				self::pointerMerge($result, $path, $jsonValue);
 			} else if ($type == "integer") {
 				self::pointerMerge($result, $path, (int)$value);
 			} else if ($type == "number") {
