@@ -87,7 +87,7 @@ class JsonStoreSearch {
 	
 	// This function can also be used to generate the complete SELECT query (by omitting the table name)
 	//   -  the actual logic is in self::mysqlQueryInner()
-	public function mysqlQuery($tableName=NULL, $orderBy=NULL) {
+	public function mysqlQuery($tableName=NULL, $orderBy=NULL, $limit=NULL) {
 		if ($tableName == NULL) {
 			$tableName = "t";
 			$result = "SELECT {$tableName}.*\n\tFROM {$this->config['table']} {$tableName}\n\tWHERE ";
@@ -103,6 +103,21 @@ class JsonStoreSearch {
 					$newOrder[$orderColumn] = "{$tableName}.".JsonStore::escapedColumn($orderColumn, $this->config)." {$direction}";
 				}
 				$result .= "\nORDER BY ".implode(", ", $newOrder);
+			}
+			if ($limit) {
+				if (is_array($limit)) {
+					if (isset($limit['count']) && isset($limit['to'])) {
+						$limit['from'] = max(0, $limit['to'] - $limit['count']);
+					} else if (isset($limit['to']) && isset($limit['from'])) {
+						$limit['count'] = max(0, $limit['to'] - $limit['from']);
+					}
+					if (isset($limit['from'])) {
+						$limit = "{$limit['from']}, {$limit['count']}";
+					} else {
+						$limit = "{$limit['count']}";
+					}
+				}
+				$result .= "\nLIMIT {$limit}";
 			}
 			return $result;
 		}
