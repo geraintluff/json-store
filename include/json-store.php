@@ -382,10 +382,10 @@ class JsonStore {
 		return self::$mysqlConfigs[$className];
 	}
 	
-	static public function schemaSearch($configName, $schemaObj, $orderBy=NULL) {
+	static public function schemaSearch($configName, $schemaObj, $orderBy=NULL, $limit=NULL) {
 		$config = self::$mysqlConfigs[$configName];
 		$search = new JsonStoreSearch($config, $schemaObj);
-		$sql = $search->mysqlQuery(NULL, $orderBy);
+		$sql = $search->mysqlQuery(NULL, $orderBy, $limit);
 		
 		$results = self::mysqlQuery($sql);
 		foreach ($results as $index => $item) {
