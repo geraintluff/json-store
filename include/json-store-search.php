@@ -4,6 +4,7 @@ class JsonSchema extends StdClass {
 	static private $subSchemaProperties = array("not", "items", "additionalProperties", "additionalItems");
 	static private $subSchemaArrayProperties = array("items", "allOf", "oneOf", "anyOf");
 	static private $subSchemaObjectProperties = array("properties", "definitions");
+	static private $plainArrayProperties = array("required", "allOf");
 	
 	static public function fromModel($data) {
 		$schema = new JsonSchema();
@@ -26,7 +27,7 @@ class JsonSchema extends StdClass {
 		}
 	}
 	
-	public function __get($key) {
+	public function &__get($key) {
 		if (in_array($key, self::$subSchemaProperties)) {
 			$this->$key = new JsonSchema();
 		} else if (in_array($key, self::$subSchemaObjectProperties)) {
@@ -36,6 +37,8 @@ class JsonSchema extends StdClass {
 				}
 			}
 			$this->$key = new JsonSchemaMap();
+		} else if (in_array($key, self::$plainArrayProperties)) {
+			$this->$key = array();
 		}
 		return $this->$key;
 	}
@@ -100,7 +103,15 @@ class JsonStoreSearch {
 			if (count($orderBy)) {
 				$newOrder = array();
 				foreach ($orderBy as $orderColumn => $direction) {
-					$newOrder[$orderColumn] = "{$tableName}.".JsonStore::escapedColumn($orderColumn, $this->config)." {$direction}";
+					foreach (array("boolean", "integer", "number", "string", "json") as $basicType) {
+						$compositeColumn = $basicType.$orderColumn;
+						if (isset($this->config['columns'][$compositeColumn])) {
+							$newOrder[$compositeColumn] = "{$tableName}.".JsonStore::escapedColumn($compositeColumn, $this->config)." {$direction}";
+						}
+					}
+					if (isset($this->config['columns'][$orderColumn])) {
+						$newOrder[$orderColumn] = "{$tableName}.".JsonStore::escapedColumn($orderColumn, $this->config)." {$direction}";
+					}
 				}
 				$result .= "\nORDER BY ".implode(", ", $newOrder);
 			}
