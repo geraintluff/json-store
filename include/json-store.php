@@ -150,27 +150,52 @@ class JsonStore {
 			}
 		}
 		$whereIn = '('.implode(', ', $whereIn).')';
-		$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn} ORDER BY ".self::escapedColumn("index", $config);
+		if (isset($config['columns']['index']) && $config['columns']['index']) {
+			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn} ORDER BY ".self::escapedColumn("index", $config);
+		} else {
+			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn}";
+		}
 		
 		$result = self::mysqlQuery($sql);
 		$groupColumn = self::unescapedColumn("group", $config);
 		$indexColumn = self::unescapedColumn("index", $config);
+		$indexCounters = array();
 		foreach ($result as $idx => $row) {
 			$groupId = $row[$groupColumn];
-			$index = $row[$indexColumn];
+			if (isset($config['columns']['index']) && $config['columns']['index']) {
+				$index = $row[$indexColumn];
+			} else {
+				if (!isset($indexCounters[$groupId])) {
+					$indexCounters[$groupId] = 0;
+				}
+				$index = $indexCounters[$groupId]++;
+			}
 			$target =& $targets[$groupId];
+			if ($config['table'] == "VendorAnnouncementsTranslators") {
+				json_debug(json_encode($target->translators));
+			}
 			$target = self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
+			if ($config['table'] == "VendorAnnouncementsTranslators") {
+				json_debug($index.": ".json_encode($target->translators));
+			}
 		}
 	}
 
 	private static function loadArray(&$target, $config, $delayLoading, $groupId, $pathPrefix="") {
-		$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId . " ORDER BY ".self::escapedColumn("index", $config);
+		if (isset($config['columns']['index']) && $config['columns']['index']) {
+			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId . " ORDER BY ".self::escapedColumn("index", $config);
+		} else {
+			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId;
+		}
 		$result = self::mysqlQuery($sql);
 		$arrayValue = self::pointerGet($target, $pathPrefix);
 		if (!is_array($arrayValue)) {
 			self::pointerSet($target, $pathPrefix, array());
 		}
 		foreach ($result as $index => $row) {
+			if ($config['columns']['index']) {
+				$index = $row[$indexColumn];
+			}
 			self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
 		}
 		return $target;
@@ -374,6 +399,15 @@ class JsonStore {
 		return self::$mysqlConfigs[$className];
 	}
 	
+	static public function schemaSearchCount($configName, $schemaObj) {
+		$config = self::$mysqlConfigs[$configName];
+		$search = new JsonStoreSearch($config, $schemaObj);
+		$sql = $search->mysqlQueryCount();
+		
+		$results = self::mysqlQuery($sql);
+		return $results[0]['count'];
+	}
+	
 	static public function schemaSearch($configName, $schemaObj, $orderBy=NULL, $limit=NULL) {
 		$config = self::$mysqlConfigs[$configName];
 		$search = new JsonStoreSearch($config, $schemaObj);
@@ -397,10 +431,9 @@ class JsonStore {
 					$newResults[] = $item;
 				}
 			}
-			return $newResults;
-		} else {
-			return $results;
+			$results = $newResults;
 		}
+		return $results;
 	}
 	
 	static public function queryFromSchema($className, $schema, $orderBy=NULL) {

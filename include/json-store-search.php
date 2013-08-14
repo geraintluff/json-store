@@ -28,14 +28,16 @@ class JsonSchema extends StdClass {
 	}
 	
 	public function &__get($key) {
+		if (!isset($this->type)) {
+			if ($key == "properties") {
+				$this->type = "object";
+			} else if ($key == "items") {
+				$this->type = "array";
+			}
+		}
 		if (in_array($key, self::$subSchemaProperties)) {
 			$this->$key = new JsonSchema();
 		} else if (in_array($key, self::$subSchemaObjectProperties)) {
-			if (!isset($this->type)) {
-				if ($key == "properties") {
-					$this->type = "object";
-				}
-			}
 			$this->$key = new JsonSchemaMap();
 		} else if (in_array($key, self::$plainArrayProperties)) {
 			$this->$key = array();
@@ -59,6 +61,15 @@ class JsonSchema extends StdClass {
 		}
 		$this->$key = $value;
 	}
+	
+	public function enum($arg1) {
+		$args = func_get_args();
+		if (count($args) == 1 && is_array($arg1)) {
+			$this->enum = $arg1;
+		} else {
+			$this->enum = $args;
+		}
+	}
 }
 class JsonSchemaMap {
 	public function __get($key) {
@@ -67,6 +78,30 @@ class JsonSchemaMap {
 	}
 	public function __set($key, $value) {
 		$this->$key = new JsonSchema($value);
+	}
+}
+
+class JsonStoreQueryConstructor {
+	public function __construct($table, $alias) {
+		$this->table = $table;
+		$this->alias = $alias;
+		$this->tableJoins = array("{$table} {$alias}");
+	}
+	public function __toString() {
+		return $this->alias;
+	}
+	public function selectFrom() {
+		return implode("\n\t", $this->tableJoins);
+	}
+	
+	public function addLeftJoin($subTable, $joinOn) {
+		$sql = "LEFT JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		$this->tableJoins[] = $sql;
+	}
+	
+	public function addJoin($subTable, $joinOn) {
+		$sql = "JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		$this->tableJoins[] = $sql;
 	}
 }
 
@@ -80,6 +115,10 @@ class JsonStoreSearch {
 		$this->path = $path;
 	}
 
+	public function tableColumn($tableName, $type, $path="") {
+		return $tableName.".".JsonStore::escapedColumn($type.$path, $this->config);
+	}
+	
 	// This should produce a query that is the negation of self::mysqlQuery().
 	// It should be completely equivalent to a NOT(...) clause - however, for readability of the query, NOT clauses should be pushed as far down as possible
 	// Crucially, if the data in question is not defined (is NULL in the DB), then these contraints should pass
@@ -88,13 +127,20 @@ class JsonStoreSearch {
 		return $this->mysqlQueryInner($tableName, TRUE);
 	}
 	
+	public function mysqlQueryCount() {
+		$tableName = new JsonStoreQueryConstructor($this->config['table'], "t");
+		$whereConditions = $this->mysqlQuery($tableName);
+		$result = "SELECT COUNT(*) AS count\n\tFROM {$tableName->selectFrom()}\n\tWHERE {$whereConditions}";
+		return $result;
+	}
+	
 	// This function can also be used to generate the complete SELECT query (by omitting the table name)
 	//   -  the actual logic is in self::mysqlQueryInner()
 	public function mysqlQuery($tableName=NULL, $orderBy=NULL, $limit=NULL) {
 		if ($tableName == NULL) {
-			$tableName = "t";
-			$result = "SELECT {$tableName}.*\n\tFROM {$this->config['table']} {$tableName}\n\tWHERE ";
-			$result .= $this->mysqlQuery($tableName);
+			$tableName = new JsonStoreQueryConstructor($this->config['table'], "t");
+			$whereConditions = $this->mysqlQuery($tableName);
+			$result = "SELECT DISTINCT {$tableName}.*\n\tFROM {$tableName->selectFrom()}\n\tWHERE {$whereConditions}";
 			if ($orderBy && !is_array($orderBy)) {
 				$orderBy = array(
 					$orderBy => "ASC"
@@ -130,6 +176,7 @@ class JsonStoreSearch {
 				}
 				$result .= "\nLIMIT {$limit}";
 			}
+
 			return $result;
 		}
 		return $this->mysqlQueryInner($tableName, FALSE);
@@ -155,13 +202,31 @@ class JsonStoreSearch {
 			$constraints->add(new JsonStoreSearchNot(new JsonStoreSearch($this->config, $schema->not, $this->path)));
 			unset($schema->not);
 		}
+		if (isset($schema->items) && !is_array($schema->items)) {
+			$arrayConstraints = new JsonStoreSearchAnd();
+			if (isset($schema->type)) {
+				$objIndex = array_search("array", $schema->type);
+				if ($objIndex !== FALSE) {
+					// TODO: does this work if the item schemas just contain "not", and the properties are not defined?
+					$schema->type[$objIndex] = $arrayConstraints;
+				}
+			} else {
+				$or = new JsonStoreSearchOr();
+				$or->add($arrayConstraints);
+				if (!isset($this->config['columns']['array'.$this->path]['parentColumn'])) {
+					$or->add(new JsonStoreSearchNot(new JsonStoreSearchType($this->config, array("array"), $this->path)));
+				}
+				$constraints->add($or);
+			}
+			$arrayConstraints->add(new JsonStoreSearchItems($this->config, $schema->items, $this->path));
+			unset($schema->items);
+		}
 		if (isset($schema->properties)) {
 			$propertyConstraints = new JsonStoreSearchAnd();
 			if (isset($schema->type)) {
 				$objIndex = array_search("object", $schema->type);
 				if ($objIndex !== FALSE) {
 					// TODO: does this work if the property schemas just contain "not", and the properties are not defined?
-					//  - 
 					$schema->type[$objIndex] = $propertyConstraints;
 				}
 			} else {
@@ -257,12 +322,13 @@ class JsonStoreSearchAnd {
 	public function mysqlQueryNot($tableName) {
 		if (count($this->components) == 0) {
 			return "0";
-		} else if (count($this->components) == 1) {
-			return $this->components[0]->mysqlQueryNot($tableName);
 		} else {
 			$result = array();
 			foreach ($this->components as $c) {
-				$result[] = $c->mysqlQueryNot($tableName);
+				$option = $c->mysqlQueryNot($tableName);
+				if ($option !== '0') {
+					$result[] = $option;
+				}
 			}
 			if (count($result) == 1) {
 				return $result[0];
@@ -274,12 +340,13 @@ class JsonStoreSearchAnd {
 	public function mysqlQuery($tableName) {
 		if (count($this->components) == 0) {
 			return "1";
-		} else if (count($this->components) == 1) {
-			return $this->components[0]->mysqlQuery($tableName);
 		} else {
 			$result = array();
 			foreach ($this->components as $c) {
-				$result[] = $c->mysqlQuery($tableName);
+				$option = $c->mysqlQuery($tableName);
+				if ($option !== '1') {
+					$result[] = $option;
+				}
 			}
 			if (count($result) == 1) {
 				return $result[0];
@@ -491,6 +558,15 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				$options[] = $this->tableColumn($tableName, 'integer', $path)." IS NOT NULL";
 			} else if ($type == "integer" && $this->hasColumn('number', $path)) {
 				$options[] = "MOD(".$this->tableColumn($tableName, 'number', $path).", 1) == 0";
+			} else if ($type == "array" && $this->hasColumn('array', $path)) {
+				$columnName = 'array'.$path;
+				$arrayConfig = $columns[$columnName];
+				if (!isset($arrayConfig['parentColumn'])) {
+					$options[] = $this->tableColumn($tableName, $columnName)." IS NOT NULL";
+				} else {
+					// If parentColumn is set, then it's *always* an array
+					return "1";
+				}
 			} else if ($columns['json'.$path]) {
 				if ($type == "object") {
 					$options[] = $this->tableColumn($tableName, 'json', $path)." LIKE '{%'";
@@ -555,6 +631,15 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 				$andOptions[] = $this->tableColumn($tableName, 'integer', $path)." IS NULL";
 			} else if ($type == "integer" && $this->hasColumn('number', $path)) {
 				$andOptions[] = "(".$this->tableColumn($tableName, 'number', $path)." IS NULL OR MOD(".$this->tableColumn($tableName, 'number', $path).", 1) <> 0)";
+			} else if ($type == "array" && $this->hasColumn('array', $path)) {
+				$columnName = 'array'.$path;
+				$arrayConfig = $columns[$columnName];
+				if (!isset($arrayConfig['parentColumn'])) {
+					$andOptions[] = $this->tableColumn($tableName, $columnName)." IS NULL";
+				} else {
+					// If parentColumn is set, then it's *always* an array
+					return "0";
+				}
 			} else if ($columns['json'.$path]) {
 				if ($type == "object") {
 					$andOptions[] = "NOT(".$this->tableColumn($tableName, 'json', $path)." LIKE '{%')";
@@ -684,6 +769,49 @@ class JsonStoreSearchPattern extends JsonStoreSearchConstraint {
 		} else {
 			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check string pattern at $path */";
 		}
+	}
+}
+
+class JsonStoreSearchItems extends JsonStoreSearchConstraint {
+	public function mysqlQuery($tableName) {
+		$columnName = "array".$this->path;
+		$parentConfig = $this->config;
+		$itemSchema = $this->values;
+		$arrayConfig = $parentConfig['columns'][$columnName];
+
+		$subSearch = new JsonStoreSearch($arrayConfig, $itemSchema, "");
+		$subTable = new JsonStoreQueryConstructor($arrayConfig['table'], $tableName."_items");
+		$subSql = $subSearch->mysqlQueryNot($subTable);
+	
+		$joinOn = $subSearch->tableColumn($subTable, "group")." = ".$this->tableColumn($tableName, $arrayConfig['parentColumn']);
+		$joinOn .= " AND ".$subSql;
+		if (isset($arrayConfig['parentColumn'])) {
+			$tableName->addLeftJoin($subTable, $joinOn);
+		} else {
+			$tableName->addLeftJoin($subTable, $joinOn);
+		}
+		
+		return $subSearch->tableColumn($subTable, "group")." IS NULL";
+	}
+
+	public function mysqlQueryNot($tableName) {
+		$columnName = "array".$this->path;
+		$parentConfig = $this->config;
+		$itemSchema = $this->values;
+		$arrayConfig = $parentConfig['columns'][$columnName];
+
+		$subSearch = new JsonStoreSearch($arrayConfig, $itemSchema, "");
+		$subTable = new JsonStoreQueryConstructor($arrayConfig['table'], $tableName."_items");
+		$subSql = $subSearch->mysqlQueryNot($subTable);
+	
+		$joinOn = $subSearch->tableColumn($subTable, "group")." = ".$this->tableColumn($tableName, $arrayConfig['parentColumn']);
+		if (isset($arrayConfig['parentColumn'])) {
+			$tableName->addJoin($subTable, $joinOn);
+		} else {
+			$tableName->addJoin($subTable, $joinOn);
+		}
+		
+		return $subSql;
 	}
 }
 
