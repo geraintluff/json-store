@@ -95,12 +95,20 @@ class JsonStoreQueryConstructor {
 	}
 	
 	public function addLeftJoin($subTable, $joinOn) {
-		$sql = "LEFT JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		if (is_string($subTable)) {
+			$sql = "LEFT JOIN ".str_replace("\n", "\n\t", $subTable." ON $joinOn");
+		} else {
+			$sql = "LEFT JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		}
 		$this->tableJoins[] = $sql;
 	}
 	
 	public function addJoin($subTable, $joinOn) {
-		$sql = "JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		if (is_string($subTable)) {
+			$sql = "JOIN ".str_replace("\n", "\n\t", $subTable." ON $joinOn");
+		} else {
+			$sql = "JOIN (".str_replace("\n", "\n\t", $subTable->selectFrom().") ON $joinOn");
+		}
 		$this->tableJoins[] = $sql;
 	}
 }
@@ -202,7 +210,7 @@ class JsonStoreSearch {
 			$constraints->add(new JsonStoreSearchNot(new JsonStoreSearch($this->config, $schema->not, $this->path)));
 			unset($schema->not);
 		}
-		if (isset($schema->items) && !is_array($schema->items)) {
+		if (isset($schema->items) || isset($schema->maxItems) || isset($schema->minItems)) {
 			$arrayConstraints = new JsonStoreSearchAnd();
 			if (isset($schema->type)) {
 				$objIndex = array_search("array", $schema->type);
@@ -218,8 +226,18 @@ class JsonStoreSearch {
 				}
 				$constraints->add($or);
 			}
-			$arrayConstraints->add(new JsonStoreSearchItems($this->config, $schema->items, $this->path));
-			unset($schema->items);
+			if (!is_array($schema->items)) {
+				$arrayConstraints->add(new JsonStoreSearchItems($this->config, $schema->items, $this->path));
+				unset($schema->items);
+			}
+			if (isset($schema->maxItems) || isset($schema->minItems)) {
+				$arrayConstraints->add(new JsonStoreSearchItemLimits($this->config, array(
+					"minItems" => isset($schema->minItems) ? $schema->minItems : NULL,
+					"maxItems" => isset($schema->maxItems) ? $schema->maxItems : NULL
+				), $this->path));
+				unset($schema->minItems);
+				unset($schema->maxItems);
+			}
 		}
 		if (isset($schema->properties)) {
 			$propertyConstraints = new JsonStoreSearchAnd();
@@ -567,7 +585,7 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 					// If parentColumn is set, then it's *always* an array
 					return "1";
 				}
-			} else if ($columns['json'.$path]) {
+			} else if ($this->hasColumn('json', $path)) {
 				if ($type == "object") {
 					$options[] = $this->tableColumn($tableName, 'json', $path)." LIKE '{%'";
 				} else if ($type == "array") {
@@ -640,7 +658,7 @@ class JsonStoreSearchType extends JsonStoreSearchConstraint {
 					// If parentColumn is set, then it's *always* an array
 					return "0";
 				}
-			} else if ($columns['json'.$path]) {
+			} else if ($this->hasColumn('json', $path)) {
 				if ($type == "object") {
 					$andOptions[] = "NOT(".$this->tableColumn($tableName, 'json', $path)." LIKE '{%')";
 				} else if ($type == "array") {
@@ -702,9 +720,9 @@ class JsonStoreSearchMinimum extends JsonStoreSearchConstraint {
 			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 		}
 		if ($this->values->exclusive) {
-			return "$column > $value";
+			return "$column > ".JsonStore::mysqlQuote($value);
 		} else {
-			return "$column >= $value";
+			return "$column >= ".JsonStore::mysqlQuote($value);
 		}
 	}
 	public function mysqlQueryNot($tableName) {
@@ -737,9 +755,9 @@ class JsonStoreSearchMaximum extends JsonStoreSearchConstraint {
 			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check numerical ({$this->values->numberType}) limits at $path */";
 		}
 		if ($this->values->exclusive) {
-			return "$column < $value";
+			return "$column < ".JsonStore::mysqlQuote($value);
 		} else {
-			return "$column <= $value";
+			return "$column <= ".JsonStore::mysqlQuote($value);
 		}
 	}
 	public function mysqlQueryNot($tableName) {
@@ -774,6 +792,9 @@ class JsonStoreSearchPattern extends JsonStoreSearchConstraint {
 
 class JsonStoreSearchItems extends JsonStoreSearchConstraint {
 	public function mysqlQuery($tableName) {
+		if (!$this->hasColumn("array", $this->path)) {
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check array items at {$this->path} */";
+		}
 		$columnName = "array".$this->path;
 		$parentConfig = $this->config;
 		$itemSchema = $this->values;
@@ -795,6 +816,9 @@ class JsonStoreSearchItems extends JsonStoreSearchConstraint {
 	}
 
 	public function mysqlQueryNot($tableName) {
+		if (!$this->hasColumn("array", $this->path)) {
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check array items at {$this->path} */";
+		}
 		$columnName = "array".$this->path;
 		$parentConfig = $this->config;
 		$itemSchema = $this->values;
@@ -812,6 +836,56 @@ class JsonStoreSearchItems extends JsonStoreSearchConstraint {
 		}
 		
 		return $subSql;
+	}
+}
+
+class JsonStoreSearchItemLimits extends JsonStoreSearchConstraint {
+	protected function mysqlQueryInner($tableName, $inverted=FALSE) {
+		if (!$this->hasColumn("array", $this->path)) {
+			return "1 /* ".JsonStoreSearch::$INCOMPLETE_TAG.": can't check array items at {$this->path} */";
+		}
+		$columnName = "array".$this->path;
+		$parentConfig = $this->config;
+		$limitParams = (object)$this->values;
+		$arrayConfig = $parentConfig['columns'][$columnName];
+
+		$subSearch = new JsonStoreSearch($arrayConfig, new JsonSchema, "");
+		$subTable = new JsonStoreQueryConstructor($arrayConfig['table'], $tableName."_itemlimits");
+
+		$joinOn = $subSearch->tableColumn($subTable, "group")." = ".$this->tableColumn($tableName, $arrayConfig['parentColumn']);
+		$subQuery = "(\n\t\tSELECT COUNT(*) AS `row_count`\n\t\t\tFROM ".str_replace("\n", "\n\t\t", $subTable->selectFrom())."\n\t\tWHERE {$joinOn}\n\t)";
+	
+		$condition = NULL;
+		if (!$inverted) {
+			if (isset($limitParams->minItems)) {
+				if (isset($limitParams->maxItems)) {
+					$condition = "BETWEEN ".JsonStore::mysqlQuote($limitParams->minItems)." AND ".JsonStore::mysqlQuote($limitParams->maxItems);
+				} else {
+					$condition = ">= ".JsonStore::mysqlQuote($limitParams->minItems);
+				}
+			} else {
+				$condition = "<= ".JsonStore::mysqlQuote($limitParams->maxItems);
+			}
+		} else {
+			if (isset($limitParams->minItems)) {
+				if (isset($limitParams->maxItems)) {
+					$condition = "NOT BETWEEN ".JsonStore::mysqlQuote($limitParams->minItems)." AND ".JsonStore::mysqlQuote($limitParams->maxItems);
+				} else {
+					$condition = "< ".JsonStore::mysqlQuote($limitParams->minItems);
+				}
+			} else {
+				$condition = "> ".JsonStore::mysqlQuote($limitParams->maxItems);
+			}
+		}
+		return "{$subQuery} {$condition}";
+	}
+	
+	public function mysqlQuery($tableName) {
+		return $this->mysqlQueryInner($tableName, FALSE);
+	}
+
+	public function mysqlQueryNot($tableName) {
+		return $this->mysqlQueryInner($tableName, TRUE);
 	}
 }
 

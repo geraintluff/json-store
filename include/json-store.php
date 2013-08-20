@@ -150,7 +150,7 @@ class JsonStore {
 			}
 		}
 		$whereIn = '('.implode(', ', $whereIn).')';
-		if (isset($config['columns']['index']) && $config['columns']['index']) {
+		if ($config['arrayColumns']['index']) {
 			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn} ORDER BY ".self::escapedColumn("index", $config);
 		} else {
 			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)." IN {$whereIn}";
@@ -162,7 +162,7 @@ class JsonStore {
 		$indexCounters = array();
 		foreach ($result as $idx => $row) {
 			$groupId = $row[$groupColumn];
-			if (isset($config['columns']['index']) && $config['columns']['index']) {
+			if ($config['arrayColumns']['index']) {
 				$index = $row[$indexColumn];
 			} else {
 				if (!isset($indexCounters[$groupId])) {
@@ -182,7 +182,7 @@ class JsonStore {
 	}
 
 	private static function loadArray(&$target, $config, $delayLoading, $groupId, $pathPrefix="") {
-		if (isset($config['columns']['index']) && $config['columns']['index']) {
+		if ($config['arrayColumns']['index']) {
 			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId . " ORDER BY ".self::escapedColumn("index", $config);
 		} else {
 			$sql = "SELECT * FROM {$config['table']} WHERE ".self::escapedColumn("group", $config)."=". (int)$groupId;
@@ -367,6 +367,10 @@ class JsonStore {
 		if (!isset($config['alias'])) {
 			$config['alias'] = array();
 		}
+		$config['arrayColumns'] = array(
+			"index" => TRUE,
+			"group" => TRUE
+		);
 		foreach ($config['alias'] as $columnName => $aliasName) {
 			if (!isset($config['columns'][$columnName])) {
 				$config['columns'][$columnName] = $columnName;
@@ -384,6 +388,8 @@ class JsonStore {
 			}
 			if ($columnName != 'group' && $columnName != 'index') {
 				$newColumns[$columnName] = $subConfig;
+			} else {
+				$config['arrayColumns'][$columnName] = !!$subConfig;
 			}
 		}
 		$config['columns'] = $newColumns;
@@ -659,8 +665,13 @@ class JsonStore {
 		}
 		foreach ($value as $idx => $row) {
 			$idx = (int)$idx;
-			$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config, array('group', 'index'))." VALUES
-				".self::mysqlInsertValues($row, $config, array($groupId, $idx));
+			if ($config['arrayColumns']['index']) {
+				$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config, array('group', 'index'))." VALUES
+					".self::mysqlInsertValues($row, $config, array($groupId, $idx));
+			} else {
+				$sql = "INSERT INTO {$config['table']} ".self::mysqlInsertColumns($config, array('group'))." VALUES
+					".self::mysqlInsertValues($row, $config, array($groupId));
+			}
 			$result = self::mysqlQuery($sql);
 			if ($groupId == 'NULL') {
 				$groupId = $result['insert_id'];
