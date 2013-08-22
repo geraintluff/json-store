@@ -145,7 +145,7 @@ class JsonStore {
 		foreach ($targets as $id => &$target) {
 			$whereIn[] = "'".self::mysqlEscape($id)."'";
 			$arrayValue = self::pointerGet($target, $pathPrefix);
-			if (!is_array($arrayValue)) {
+			if (!is_array($arrayValue) && is_null($arrayValue)) {
 				self::pointerSet($target, $pathPrefix, array());
 			}
 		}
@@ -171,13 +171,11 @@ class JsonStore {
 				$index = $indexCounters[$groupId]++;
 			}
 			$target =& $targets[$groupId];
-			if ($config['table'] == "VendorAnnouncementsTranslators") {
-				json_debug(json_encode($target->translators));
+			$arrayValue = self::pointerGet($target, $pathPrefix);
+			if (!is_array($arrayValue) && is_null($arrayValue)) {
+				self::pointerSet($target, $pathPrefix, array());
 			}
 			$target = self::loadObject($row, $config, $delayLoading, $target, $pathPrefix."/".$index);
-			if ($config['table'] == "VendorAnnouncementsTranslators") {
-				json_debug($index.": ".json_encode($target->translators));
-			}
 		}
 	}
 
@@ -189,7 +187,7 @@ class JsonStore {
 		}
 		$result = self::mysqlQuery($sql);
 		$arrayValue = self::pointerGet($target, $pathPrefix);
-		if (!is_array($arrayValue)) {
+		if (!is_array($arrayValue) && (count($result) > 0 || is_null($arrayValue))) {
 			self::pointerSet($target, $pathPrefix, array());
 		}
 		foreach ($result as $index => $row) {
@@ -367,6 +365,10 @@ class JsonStore {
 		if (!isset($config['alias'])) {
 			$config['alias'] = array();
 		}
+		if (!isset($config['readOnly'])) {
+			$config['readOnly'] = array();
+		}
+		
 		$config['arrayColumns'] = array(
 			"index" => TRUE,
 			"group" => TRUE
@@ -374,6 +376,12 @@ class JsonStore {
 		foreach ($config['alias'] as $columnName => $aliasName) {
 			if (!isset($config['columns'][$columnName])) {
 				$config['columns'][$columnName] = $columnName;
+			}
+		}
+
+		foreach ($config['readOnly'] as $columnName => $subConfig) {
+			if (!isset($config['columns'][$columnName])) {
+				$config['columns'][$columnName] = $subConfig;
 			}
 		}
 
@@ -561,6 +569,9 @@ class JsonStore {
 		$columns = $config['columns'];
 		$result = array();
 		foreach ($columns as $column => $subConfig) {
+			if (isset($config['readOnly'][$column])) {
+				continue;
+			}
 			$parts = explode('/', $column, 2);
 			$type = $parts[0];
 			$path = count($parts) > 1 ? '/'.$parts[1] : '';
