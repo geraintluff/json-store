@@ -64,7 +64,7 @@ class JsonSchema extends StdClass {
 			}
 		}
 		// If type was set above, then this will have been reset
-		$this->userSetType = TRUE;
+		$this->userSetType = FALSE;
 	}
 	
 	public function &__get($key) {
